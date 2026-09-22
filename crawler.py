@@ -368,6 +368,75 @@ def fetch_feed(url, attempts=2):
     return parsed
 
 
+# Page furniture that carries *other* stories' headlines: navigation, sidebars,
+# "related"/"trending"/"most read" blocks, newsletter promos, footers. Text from
+# these is not part of the article and must not be matched against keywords, or
+# an unrelated article on a site that happens to also cover CC will be reported
+# under its own irrelevant headline and link.
+_CHROME_TAGS = ("nav", "aside", "header", "footer", "form", "script", "style",
+                "noscript", "iframe", "figure", "figcaption")
+_CHROME_HINTS = re.compile(
+    r"(related|recommend|trending|most[-_ ]?read|popular|latest|more[-_ ]?from|"
+    r"read[-_ ]?(also|more|next)|you[-_ ]?may[-_ ]?(also[-_ ]?)?like|"
+    r"sidebar|widget|promo|newsletter|subscribe|advert|sponsor|outbrain|taboola|"
+    r"comment|share|social|breadcrumb|menu|nav|footer|header|tags?[-_ ]?list|"
+    # Author bios list everything the writer covers, so a CC mention there is
+    # about the author's beat, not this article. Observed live: a Red Hat
+    # post-quantum article matched only via "He also covers confidential
+    # computing" in the byline block.
+    r"author|byline|contributor|about[-_ ]?(the[-_ ]?)?author|profile)",
+    re.IGNORECASE,
+)
+
+
+def extract_article_text(html):
+    """
+    Return the text of the article body only, excluding page furniture.
+
+    Falling back to <body> pulls in navigation and "related stories" blocks,
+    whose text belongs to *different* articles. A keyword match there is a
+    false positive that attributes an unrelated story's relevance to this one.
+    """
+    soup = BeautifulSoup(html, "lxml")
+
+    for tag in soup(list(_CHROME_TAGS)):
+        tag.decompose()
+    # Containers whose id/class names mark them as furniture
+    for el in soup.find_all(attrs={"class": _CHROME_HINTS}):
+        el.decompose()
+    for el in soup.find_all(attrs={"id": _CHROME_HINTS}):
+        el.decompose()
+
+    # Prefer explicit article semantics; fall back progressively.
+    node = (soup.find("article")
+            or soup.find(attrs={"itemprop": "articleBody"})
+            or soup.find(attrs={"class": re.compile(r"(article|entry|post|story)[-_]?(body|content|text)", re.I)})
+            or soup.find("main"))
+    if node is None:
+        # No article container: use the densest block of <p> text rather than
+        # the whole body, which would re-admit the chrome we just stripped.
+        best, best_len = None, 0
+        for cand in soup.find_all(["div", "section"]):
+            paras = cand.find_all("p", recursive=False)
+            if not paras:
+                continue
+            length = sum(len(x.get_text(" ", strip=True)) for x in paras)
+            if length > best_len:
+                best, best_len = cand, length
+        node = best
+    if node is None:
+        return ""
+
+    # Within the chosen container, keep paragraph text: headline lists in
+    # related-story modules are usually <a>/<h*>/<li>, not <p>.
+    paras = node.find_all("p")
+    if paras:
+        text = " ".join(x.get_text(" ", strip=True) for x in paras)
+        if len(text) >= 200:
+            return text
+    return node.get_text(" ", strip=True)
+
+
 def fetch_article_text(url):
     try:
         resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
@@ -377,9 +446,7 @@ def fetch_article_text(url):
         final_host = urlparse(resp.url).netloc.lstrip("www.")
         if any(final_host == d or final_host.endswith("." + d) for d in _REDIRECT_DOMAINS):
             return ""
-        soup = BeautifulSoup(resp.text, "lxml")
-        article = soup.find("article") or soup.find("main") or soup.body
-        return article.get_text(" ", strip=True) if article else ""
+        return extract_article_text(resp.text)
     except Exception:
         return ""
 
@@ -795,6 +862,38 @@ def _parse_pub_date(pub_str):
         return None
 
 
+def _story_label(titles):
+    """
+    Build a human-readable label for a group of articles about one story.
+
+    The label must describe the *event*, not name a company: the old behaviour
+    used the most common company across the group, which rendered as bare
+    headers like "**Huawei**". Those read as a per-company section of the
+    report, which is wrong — the report is not organised by company, and other
+    articles about that company appear elsewhere.
+
+    A real headline is used rather than a synthesised common-substring, because
+    word-overlap fragments come out as truncated noise ("Embedded Intelligence
+    And"). The shortest headline is preferred: it carries the fewest publisher
+    suffixes and sub-clauses while still being a sentence someone wrote.
+    """
+    cleaned = []
+    for t in titles:
+        if not t or not t.strip():
+            continue
+        # Drop the trailing " - Publisher" that Google News appends
+        t = re.sub(r"\s+[-\u2013|]\s+[^-\u2013|]{1,40}$", "", t).strip()
+        if t:
+            cleaned.append(t)
+    if not cleaned:
+        return "Related coverage"
+
+    label = min(cleaned, key=len)
+    if len(label) > 96:
+        label = label[:93].rstrip() + "..."
+    return label
+
+
 def heuristic_cluster(articles, date_window_days=1, jaccard_threshold=0.4):
     """
     Deterministic same-story clustering (fallback when the claude CLI is unavailable).
@@ -873,13 +972,12 @@ def heuristic_cluster(articles, date_window_days=1, jaccard_threshold=0.4):
     id_to_cluster = {}
     cluster_labels = {}
     for cid, indices in enumerate(groups.values()):
-        # Label: most common company across the group, fallback to first title
-        votes = {}
-        for idx in indices:
-            c = companies[idx]
-            if c:
-                votes[c] = votes.get(c, 0) + 1
-        label = max(votes, key=votes.get).title() if votes else articles[indices[0]]["title"][:60]
+        # Label the *story*, not the company. Using the most common company
+        # produced bare headers like "**Huawei**", which read as a per-company
+        # section rather than one shared story — misleading, since other
+        # articles about the same company sit elsewhere in the report and the
+        # report is not organised by company.
+        label = _story_label([articles[idx]["title"] for idx in indices])
         for idx in indices:
             id_to_cluster[articles[idx]["_id"]] = cid
         cluster_labels[cid] = label
@@ -1485,11 +1583,18 @@ def main():
                     continue
                 pub_fmt = pub.strftime("%a, %d %b %Y %H:%M:%S %Z") if pub else pub_str
 
+                # Google News results were previously trusted without any
+                # keyword check, so anything its query surfaced was reported —
+                # including travel and book-fair stories from publishers that
+                # merely also cover CC. Verify like any other source.
                 haystack = f"{title} {description}"
-                if not args.no_fetch_articles and url:
+                if not keyword_match(haystack, keywords):
+                    if args.no_fetch_articles or not url:
+                        continue
                     full_text = fetch_article_text(url)
-                    if full_text:
-                        haystack = f"{haystack} {full_text}"
+                    if not keyword_match(full_text, keywords):
+                        continue
+                    haystack = f"{haystack} {full_text}"
 
                 total_matched += 1
                 gnews_matched += 1
