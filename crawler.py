@@ -1013,6 +1013,33 @@ def keyword_match(text, keywords):
 
 WEBFEED_DEFAULT_DAYS = 7
 
+# Publication time for webfeed editions. The window is half-open —
+# [start_cutoff, end_cutoff) — so consecutive weekly runs share a boundary
+# instant without sharing any article. 00:01 UTC means an edition covers
+# whole days and the boundary sits in the quietest part of the news cycle,
+# rather than at midnight where a batch of feed timestamps tends to cluster.
+WEBFEED_PUBLICATION_TIME = "00:01"
+
+
+def _outside_window(pub, start_dt, end_dt, webfeed_end_cutoff):
+    """
+    True if `pub` falls outside the reporting window.
+
+    Webfeed mode uses a half-open window [start, end) so that consecutive
+    editions cannot both contain an article published on the boundary.
+    Default mode keeps the original inclusive behaviour.
+    """
+    if webfeed_end_cutoff is not None:
+        return pub < start_dt or pub >= webfeed_end_cutoff
+    return pub < start_dt or pub > end_dt
+
+
+def webfeed_cutoff(date_str, clock=WEBFEED_PUBLICATION_TIME):
+    """Return the UTC instant at which a webfeed edition boundary falls."""
+    hh, mm = (int(x) for x in clock.split(":"))
+    return (datetime.strptime(date_str, "%Y-%m-%d")
+            .replace(hour=hh, minute=mm, tzinfo=timezone.utc))
+
 
 def load_webfeed_state(path):
     """
@@ -1043,11 +1070,15 @@ def load_webfeed_state(path):
     return state, None
 
 
-def save_webfeed_state(path, start, end, output, matched):
+def save_webfeed_state(path, start, end, output, matched, clock):
     """Record this run so the next webfeed run knows where to resume."""
     state = {
         "last_run_end": end,
         "last_run_start": start,
+        # The exact instant this edition's coverage stopped. The next run uses
+        # it as an exclusive lower bound, so no article can appear twice.
+        "cutoff": webfeed_cutoff(end, clock).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "publication_time": clock,
         "last_run_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "last_output": os.path.abspath(output),
         "last_matched": matched,
@@ -1060,7 +1091,12 @@ def save_webfeed_state(path, start, end, output, matched):
 
 def resolve_webfeed_window(args, state_path):
     """
-    Work out the (start, end) window for a webfeed run.
+    Work out the window for a webfeed run.
+
+    Returns (start_date, end_date, start_exclusive) where start_exclusive is
+    the precise instant the previous edition stopped, or None to derive it from
+    start_date and the publication time. Carrying the instant forward means a
+    change of publication time cannot open a gap or an overlap at the seam.
 
     Normal case: resume from the end of the previous run, so nothing is missed
     if a week is skipped. First ever run: default to the last 7 days, but offer
@@ -1079,7 +1115,7 @@ def resolve_webfeed_window(args, state_path):
               f"State file not consulted and will not be updated.",
               file=sys.stderr)
         args.webfeed_adhoc = True
-        return args.start, args.end
+        return args.start, args.end, None
 
     state, problem = load_webfeed_state(state_path)
 
@@ -1096,9 +1132,28 @@ def resolve_webfeed_window(args, state_path):
     if state:
         start = state["last_run_end"]
         gap = (datetime.strptime(end, "%Y-%m-%d") - datetime.strptime(start, "%Y-%m-%d")).days
+        # Prefer the recorded cutoff instant over recomputing it: state written
+        # by an earlier version, or under a different publication time, still
+        # resumes exactly where it stopped.
+        start_exclusive = None
+        recorded = state.get("cutoff")
+        if recorded:
+            try:
+                start_exclusive = datetime.strptime(
+                    recorded, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            except ValueError:
+                print(f"[webfeed] WARNING: ignoring unparseable cutoff "
+                      f"{recorded!r} in state file; deriving from "
+                      f"{start} {args.webfeed_time} UTC.", file=sys.stderr)
+        if start_exclusive is None:
+            start_exclusive = webfeed_cutoff(start, args.webfeed_time)
+            print(f"[webfeed] State file predates cutoff tracking; assuming "
+                  f"the last edition stopped at {start} "
+                  f"{args.webfeed_time} UTC.", file=sys.stderr)
         print(f"[webfeed] Last run covered up to {start} ({gap}d ago); "
-              f"scoping {start} to {end}.", file=sys.stderr)
-        return start, end
+              f"scoping {start_exclusive:%Y-%m-%d %H:%M} UTC (exclusive) to "
+              f"{end} {args.webfeed_time} UTC.", file=sys.stderr)
+        return start, end, start_exclusive
 
     default_start = (datetime.now(timezone.utc) - timedelta(days=WEBFEED_DEFAULT_DAYS)).strftime("%Y-%m-%d")
     consolidate = args.webfeed_consolidate
@@ -1120,11 +1175,13 @@ def resolve_webfeed_window(args, state_path):
     if consolidate:
         start = (datetime.now(timezone.utc)
                  - timedelta(days=args.webfeed_consolidate_days)).strftime("%Y-%m-%d")
-        print(f"[webfeed] Consolidated first run: {start} to {end}.", file=sys.stderr)
-        return start, end
+        print(f"[webfeed] Consolidated first run: {start} to {end} "
+              f"({args.webfeed_time} UTC boundaries).", file=sys.stderr)
+        return start, end, None
 
-    print(f"[webfeed] First run: {default_start} to {end}.", file=sys.stderr)
-    return default_start, end
+    print(f"[webfeed] First run: {default_start} to {end} "
+          f"({args.webfeed_time} UTC boundaries).", file=sys.stderr)
+    return default_start, end, None
 
 
 def main():
@@ -1168,23 +1225,52 @@ def main():
     parser.add_argument("--no-webfeed-consolidate", dest="webfeed_consolidate",
                         action="store_false",
                         help="On a first webfeed run, use the normal 7-day window without prompting")
+    parser.add_argument("--webfeed-time", default=WEBFEED_PUBLICATION_TIME, metavar="HH:MM",
+                        help=f"UTC publication time marking edition boundaries "
+                             f"(default: {WEBFEED_PUBLICATION_TIME}). The window is "
+                             f"half-open, so consecutive editions never share an article")
     parser.add_argument("--webfeed-consolidate-days", type=int, default=90,
                         help="Look-back window in days for a consolidated first webfeed run (default: 90)")
     args = parser.parse_args()
 
     webfeed_state_path = None
+    webfeed_start_exclusive = None
     args.webfeed_adhoc = False
     if args.webfeed:
+        try:
+            hh, mm = (int(x) for x in args.webfeed_time.split(":"))
+            if not (0 <= hh < 24 and 0 <= mm < 60):
+                raise ValueError
+        except ValueError:
+            parser.error(f"--webfeed-time must be HH:MM in 24-hour UTC, "
+                         f"got {args.webfeed_time!r}")
         # Webfeed mode implies plain text tags (no coloured spans / emoji)
         args.no_styling = True
         webfeed_state_path = args.webfeed_state or os.path.join(
             os.path.dirname(os.path.abspath(args.output)) or ".", ".webfeed-state.json"
         )
-        args.start, args.end = resolve_webfeed_window(args, webfeed_state_path)
+        args.start, args.end, webfeed_start_exclusive = resolve_webfeed_window(
+            args, webfeed_state_path)
 
     keywords = [k.strip() for k in args.keywords.split(",") if k.strip()]
-    start_dt = datetime.strptime(args.start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    end_dt = datetime.strptime(args.end, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+    if args.webfeed:
+        # Half-open window [start_cutoff, end_cutoff): the start instant is the
+        # exact point the previous edition stopped, so the boundary day is not
+        # reported twice. `webfeed_start_exclusive` carries a resumed cutoff
+        # that may differ from 00:01 if the publication time was changed.
+        start_dt = webfeed_start_exclusive or webfeed_cutoff(args.start, args.webfeed_time)
+        end_dt = webfeed_cutoff(args.end, args.webfeed_time)
+        if end_dt <= start_dt:
+            print(f"[webfeed] Window is empty: start cutoff {start_dt:%Y-%m-%d %H:%M} UTC "
+                  f"is not before end cutoff {end_dt:%Y-%m-%d %H:%M} UTC. "
+                  f"Nothing new since the last edition; not writing a report.",
+                  file=sys.stderr)
+            sys.exit(0)
+        webfeed_end_cutoff = end_dt
+    else:
+        start_dt = datetime.strptime(args.start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        end_dt = datetime.strptime(args.end, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+        webfeed_end_cutoff = None
 
     socket.setdefaulttimeout(60)
 
@@ -1240,7 +1326,7 @@ def main():
             total_entries += 1
 
             pub = entry_datetime(entry)
-            if pub and (pub < start_dt or pub > end_dt):
+            if pub and _outside_window(pub, start_dt, end_dt, webfeed_end_cutoff):
                 continue
 
             title = entry.get("title", "")
@@ -1323,7 +1409,7 @@ def main():
                     pub = email.utils.parsedate_to_datetime(pub_str).astimezone(timezone.utc)
                 except Exception:
                     pass
-                if pub and (pub < start_dt or pub > end_dt):
+                if pub and _outside_window(pub, start_dt, end_dt, webfeed_end_cutoff):
                     continue
                 pub_fmt = pub.strftime("%a, %d %b %Y %H:%M:%S %Z") if pub else pub_str
 
@@ -1402,7 +1488,13 @@ def main():
 
     with open(args.output, "w") as f:
         f.write("# Confidential Computing News Report\n\n")
-        f.write(f"**Period:** {args.start} to {args.end}\n")
+        if args.webfeed:
+            # Show the true half-open boundaries, so it is unambiguous which
+            # edition a boundary-day article belongs to.
+            f.write(f"**Period:** {start_dt:%Y-%m-%d %H:%M} UTC (inclusive) to "
+                    f"{end_dt:%Y-%m-%d %H:%M} UTC (exclusive)\n")
+        else:
+            f.write(f"**Period:** {args.start} to {args.end}\n")
         f.write(f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
         f.write(f"**Keywords:** {args.keywords}\n")
         f.write(f"**Total matched:** {total_matched}\n\n")
@@ -1490,7 +1582,7 @@ def main():
 
     if args.webfeed and webfeed_state_path and not args.webfeed_adhoc:
         save_webfeed_state(webfeed_state_path, args.start, args.end,
-                           args.output, total_matched)
+                           args.output, total_matched, args.webfeed_time)
         print(f"Recorded webfeed run state in {webfeed_state_path}", file=sys.stderr)
     elif args.webfeed and args.webfeed_adhoc:
         # A one-off backfill must not rewind the weekly resume point.
