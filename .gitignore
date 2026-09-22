@@ -56,3 +56,4 @@ cc-news-past-month.md
 
 # Generated webfeed editions and run state
 webfeed/
+webfeed-*.md
