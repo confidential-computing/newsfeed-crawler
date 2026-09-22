@@ -1070,14 +1070,21 @@ def load_webfeed_state(path):
     return state, None
 
 
-def save_webfeed_state(path, start, end, output, matched, clock):
-    """Record this run so the next webfeed run knows where to resume."""
+def save_webfeed_state(path, start, end, output, matched, clock, cutoff):
+    """
+    Record this run so the next webfeed run knows where to resume.
+
+    `cutoff` is the exact instant this edition's coverage stopped — the moment
+    of generation under the default `--webfeed-end-at now`, or the publication
+    boundary otherwise. It is stored verbatim rather than recomputed from
+    `end`, because a mid-day cutoff cannot be recovered from a date alone.
+    """
     state = {
         "last_run_end": end,
         "last_run_start": start,
         # The exact instant this edition's coverage stopped. The next run uses
         # it as an exclusive lower bound, so no article can appear twice.
-        "cutoff": webfeed_cutoff(end, clock).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "cutoff": cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "publication_time": clock,
         "last_run_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "last_output": os.path.abspath(output),
@@ -1150,9 +1157,10 @@ def resolve_webfeed_window(args, state_path):
             print(f"[webfeed] State file predates cutoff tracking; assuming "
                   f"the last edition stopped at {start} "
                   f"{args.webfeed_time} UTC.", file=sys.stderr)
-        print(f"[webfeed] Last run covered up to {start} ({gap}d ago); "
-              f"scoping {start_exclusive:%Y-%m-%d %H:%M} UTC (exclusive) to "
-              f"{end} {args.webfeed_time} UTC.", file=sys.stderr)
+        print(f"[webfeed] Last edition stopped at "
+              f"{start_exclusive:%Y-%m-%d %H:%M:%S} UTC ({gap}d ago); "
+              f"resuming from that instant (inclusive; it was excluded "
+              f"from the last edition).", file=sys.stderr)
         return start, end, start_exclusive
 
     default_start = (datetime.now(timezone.utc) - timedelta(days=WEBFEED_DEFAULT_DAYS)).strftime("%Y-%m-%d")
@@ -1229,6 +1237,19 @@ def main():
                         help=f"UTC publication time marking edition boundaries "
                              f"(default: {WEBFEED_PUBLICATION_TIME}). The window is "
                              f"half-open, so consecutive editions never share an article")
+    parser.add_argument("--webfeed-min-window", type=int, default=3600, metavar="SECONDS",
+                        help="Refuse to publish an edition covering less than this many "
+                             "seconds (default: 3600). Guards against an accidental "
+                             "re-run overwriting a good edition with a near-empty one. "
+                             "Set to 0 to disable")
+    parser.add_argument("--webfeed-end-at", choices=("now", "publication-time"),
+                        default="now",
+                        help="Where the current edition stops: 'now' (default) runs to the "
+                             "moment of generation, so a midday run includes that morning's "
+                             "news; 'publication-time' stops at the --webfeed-time boundary, "
+                             "making editions whole-day. Either way the next edition resumes "
+                             "from this edition's exact end instant, so articles are never "
+                             "duplicated")
     parser.add_argument("--webfeed-consolidate-days", type=int, default=90,
                         help="Look-back window in days for a consolidated first webfeed run (default: 90)")
     args = parser.parse_args()
@@ -1259,12 +1280,38 @@ def main():
         # reported twice. `webfeed_start_exclusive` carries a resumed cutoff
         # that may differ from 00:01 if the publication time was changed.
         start_dt = webfeed_start_exclusive or webfeed_cutoff(args.start, args.webfeed_time)
-        end_dt = webfeed_cutoff(args.end, args.webfeed_time)
+
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        ends_today = args.end == now.strftime("%Y-%m-%d")
+        if args.webfeed_end_at == "now" and ends_today and not args.webfeed_adhoc:
+            # Run right up to the moment of generation, so an edition produced
+            # at midday includes that morning's news. The no-duplicate
+            # guarantee is unaffected: the next edition resumes from this exact
+            # instant, which is recorded in the state file.
+            end_dt = now
+            print(f"[webfeed] Edition runs to the moment of generation "
+                  f"({end_dt:%Y-%m-%d %H:%M:%S} UTC).", file=sys.stderr)
+        else:
+            end_dt = webfeed_cutoff(args.end, args.webfeed_time)
+
         if end_dt <= start_dt:
-            print(f"[webfeed] Window is empty: start cutoff {start_dt:%Y-%m-%d %H:%M} UTC "
-                  f"is not before end cutoff {end_dt:%Y-%m-%d %H:%M} UTC. "
+            print(f"[webfeed] Window is empty: start cutoff {start_dt:%Y-%m-%d %H:%M:%S} UTC "
+                  f"is not before end cutoff {end_dt:%Y-%m-%d %H:%M:%S} UTC. "
                   f"Nothing new since the last edition; not writing a report.",
                   file=sys.stderr)
+            sys.exit(0)
+
+        span = (end_dt - start_dt).total_seconds()
+        if args.webfeed_min_window and span < args.webfeed_min_window:
+            # Almost certainly an accidental re-run: publishing would overwrite
+            # the previous edition's output with a near-empty one and advance
+            # the resume point past news that has not been reported.
+            print(f"[webfeed] Only {int(span)}s since the last edition "
+                  f"(minimum {args.webfeed_min_window}s). This looks like an "
+                  f"accidental re-run; refusing to overwrite "
+                  f"{args.output} with a near-empty edition. Use "
+                  f"--webfeed-min-window 0 to override, or --start/--end for "
+                  f"an ad-hoc report.", file=sys.stderr)
             sys.exit(0)
         webfeed_end_cutoff = end_dt
     else:
@@ -1491,8 +1538,8 @@ def main():
         if args.webfeed:
             # Show the true half-open boundaries, so it is unambiguous which
             # edition a boundary-day article belongs to.
-            f.write(f"**Period:** {start_dt:%Y-%m-%d %H:%M} UTC (inclusive) to "
-                    f"{end_dt:%Y-%m-%d %H:%M} UTC (exclusive)\n")
+            f.write(f"**Period:** {start_dt:%Y-%m-%d %H:%M:%S} UTC (inclusive) to "
+                    f"{end_dt:%Y-%m-%d %H:%M:%S} UTC (exclusive)\n")
         else:
             f.write(f"**Period:** {args.start} to {args.end}\n")
         f.write(f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
@@ -1582,7 +1629,8 @@ def main():
 
     if args.webfeed and webfeed_state_path and not args.webfeed_adhoc:
         save_webfeed_state(webfeed_state_path, args.start, args.end,
-                           args.output, total_matched, args.webfeed_time)
+                           args.output, total_matched, args.webfeed_time,
+                           webfeed_end_cutoff)
         print(f"Recorded webfeed run state in {webfeed_state_path}", file=sys.stderr)
     elif args.webfeed and args.webfeed_adhoc:
         # A one-off backfill must not rewind the weekly resume point.
