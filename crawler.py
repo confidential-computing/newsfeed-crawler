@@ -661,6 +661,13 @@ def derive_subjects_json_path(md_output):
     basename = os.path.basename(md_output)
     if basename.startswith("report-") and basename.endswith(".md"):
         json_name = "subjects-" + basename[len("report-"):-len(".md")] + ".json"
+    elif basename.startswith("webfeed-") and basename.endswith(".md"):
+        # `subjects-webfeed-DATE.json`: still matches the `subjects-*.json`
+        # glob that ccc-potentials consumes, so an edition contributes news
+        # coverage signals — but does not overwrite a report's index, which
+        # covers a wider period (30 days by default vs the edition's 7) and
+        # would otherwise be silently narrowed.
+        json_name = "subjects-webfeed-" + basename[len("webfeed-"):-len(".md")] + ".json"
     else:
         json_name = basename.rsplit(".", 1)[0] + ".subjects.json"
     return os.path.join(directory, json_name) if directory else json_name
@@ -1199,7 +1206,10 @@ def main():
     parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"))
     parser.add_argument("--keywords", default=DEFAULT_KEYWORDS,
                         help="Comma-separated list of keywords (case-insensitive)")
-    parser.add_argument("--output", default=f"report-{datetime.now().strftime('%Y-%m-%d')}.md")
+    parser.add_argument("--output", default=None,
+                        help="Output path. Defaults to report-YYYY-MM-DD.md, or "
+                             "webfeed-YYYY-MM-DD.md in --webfeed mode so editions are "
+                             "never confused with ordinary reports")
     parser.add_argument("--members-cache", default="members.json")
     parser.add_argument("--force-refresh", action="store_true",
                         help="Re-fetch CCC members from LFX even if the cache is fresh")
@@ -1257,6 +1267,21 @@ def main():
     webfeed_state_path = None
     webfeed_start_exclusive = None
     args.webfeed_adhoc = False
+
+    if args.output is None:
+        # Webfeed editions get their own filename stem. They differ from
+        # ordinary reports in content (no category headings, no subject-company
+        # summary, invisible tags), so sharing a name would make them easy to
+        # mistake for one another — and an ordinary run would silently
+        # overwrite the day's published edition.
+        if args.webfeed:
+            # UTC, matching the edition boundaries, so the filename agrees with
+            # the Period header rather than drifting near local midnight.
+            args.output = f"webfeed-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.md"
+        else:
+            # Local date, unchanged from previous versions.
+            args.output = f"report-{datetime.now().strftime('%Y-%m-%d')}.md"
+
     if args.webfeed:
         try:
             hh, mm = (int(x) for x in args.webfeed_time.split(":"))
