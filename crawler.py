@@ -1015,15 +1015,32 @@ WEBFEED_DEFAULT_DAYS = 7
 
 
 def load_webfeed_state(path):
-    """Return the webfeed state dict, or None if there is no usable state file."""
+    """
+    Return (state_dict, problem). Exactly one is non-None.
+
+    `problem` describes why an existing file was unusable, so the caller can
+    distinguish "never run before" from "state file is damaged" — the latter
+    otherwise looks like a first run and silently loses the resume point.
+    """
+    if not os.path.exists(path):
+        return None, None
     try:
         with open(path) as f:
             state = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
-    if not isinstance(state, dict) or not state.get("last_run_end"):
-        return None
-    return state
+    except json.JSONDecodeError as e:
+        return None, f"exists but is not valid JSON ({e})"
+    except OSError as e:
+        return None, f"exists but could not be read ({e})"
+    if not isinstance(state, dict):
+        return None, "exists but does not contain a JSON object"
+    if not state.get("last_run_end"):
+        return None, "exists but has no 'last_run_end' field"
+    try:
+        datetime.strptime(state["last_run_end"], "%Y-%m-%d")
+    except ValueError:
+        return None, (f"has an unparseable last_run_end "
+                      f"{state['last_run_end']!r}; expected YYYY-MM-DD")
+    return state, None
 
 
 def save_webfeed_state(path, start, end, output, matched):
@@ -1050,7 +1067,31 @@ def resolve_webfeed_window(args, state_path):
     a consolidated back-catalogue report instead.
     """
     end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    state = load_webfeed_state(state_path)
+
+    # An explicit window on the command line wins: webfeed scoping is a
+    # convenience, not a straitjacket, and this is also the documented escape
+    # hatch when the state file is damaged.
+    explicit = [a for a in ("--start", "--end")
+                if any(arg == a or arg.startswith(a + "=") for arg in sys.argv[1:])]
+    if explicit:
+        print(f"[webfeed] Using the window given on the command line "
+              f"({' and '.join(explicit)}): {args.start} to {args.end}. "
+              f"State file not consulted and will not be updated.",
+              file=sys.stderr)
+        args.webfeed_adhoc = True
+        return args.start, args.end
+
+    state, problem = load_webfeed_state(state_path)
+
+    if problem:
+        # Don't silently treat a damaged state file as a first run: that would
+        # overwrite it and quietly narrow the window to 7 days.
+        print(f"[webfeed] WARNING: state file {state_path} {problem}.",
+              file=sys.stderr)
+        print("[webfeed] Cannot tell when the last run ended. Refusing to guess; "
+              "the resume point would be lost. Fix or delete the file, or pass "
+              "--start/--end explicitly.", file=sys.stderr)
+        sys.exit(1)
 
     if state:
         start = state["last_run_end"]
@@ -1063,7 +1104,7 @@ def resolve_webfeed_window(args, state_path):
     consolidate = args.webfeed_consolidate
 
     if consolidate is None:
-        print(f"[webfeed] No previous run found ({state_path} missing).", file=sys.stderr)
+        print(f"[webfeed] No previous run found ({state_path} does not exist).", file=sys.stderr)
         if sys.stdin.isatty():
             answer = input(
                 f"Build a consolidated report covering the last "
@@ -1132,6 +1173,7 @@ def main():
     args = parser.parse_args()
 
     webfeed_state_path = None
+    args.webfeed_adhoc = False
     if args.webfeed:
         # Webfeed mode implies plain text tags (no coloured spans / emoji)
         args.no_styling = True
@@ -1446,10 +1488,13 @@ def main():
     os.replace(tmp, json_path)
     print(f"Wrote subject index to {json_path}", file=sys.stderr)
 
-    if args.webfeed and webfeed_state_path:
+    if args.webfeed and webfeed_state_path and not args.webfeed_adhoc:
         save_webfeed_state(webfeed_state_path, args.start, args.end,
                            args.output, total_matched)
         print(f"Recorded webfeed run state in {webfeed_state_path}", file=sys.stderr)
+    elif args.webfeed and args.webfeed_adhoc:
+        # A one-off backfill must not rewind the weekly resume point.
+        print("Ad-hoc window: webfeed run state left unchanged.", file=sys.stderr)
 
     if feed_health:
         print("\nFeed health warnings:", file=sys.stderr)
