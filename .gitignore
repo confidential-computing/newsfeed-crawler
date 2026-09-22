@@ -1,0 +1,55 @@
+# Environments and caches
+venv/
+node_modules/
+__pycache__/
+*.pyc
+
+# Cached member data: refreshed from LFX at runtime, not source
+members.json
+
+# Generated reports and their subject indexes
+report-*.md
+subjects-*.json
+*.subjects.json
+
+# Generated crawler output from July/August debugging sessions: each of these
+# has a matching *.subjects.json, i.e. it is a crawl result, not source.
+balanced-clustering-test.md
+clustering-analysis.md
+clustering-debug.md
+comprehensive-validation.md
+current-clustering-analysis.md
+final-test.md
+final-test-dedup.md
+final-validation.md
+fixed-clustering-test.md
+fixed-heuristic-test.md
+heuristic-clustering-test.md
+heuristic-only-test.md
+test-ai-clustering.md
+test-balanced.md
+test-clustering.md
+test-current-feeds.md
+test-dedup.md
+test-dedup-recent.md
+test-fixed-categorization.md
+test-individual-stories.md
+test-regression.md
+test-subject-dedup.md
+test-validation.md
+test-with-date.md
+ultra-conservative-test.md
+cc-news-2026-07-21.md
+cc-news-past-month.md
+
+# Webfeed mode run state (per-machine, records the last run's window)
+.webfeed-state.json
+
+# Editor artifacts (leading '#' needs escaping or git reads it as a comment)
+\#*\#
+*~
+.\#*
+
+# Stray directory created by a literal '~' in an old command; contains
+# superseded copies of the skill docs. Safe to delete.
+/~/

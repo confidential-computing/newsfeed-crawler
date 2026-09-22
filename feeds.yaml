@@ -1,0 +1,55 @@
+feeds:
+  - name: The Register - Security
+    url: https://www.theregister.com/security/headlines.atom
+  - name: The Register - Cloud
+    url: https://www.theregister.com/off_prem/headlines.atom
+  - name: InfoQ - Cloud
+    url: https://feed.infoq.com/cloud/
+  - name: Ars Technica
+    url: https://feeds.arstechnica.com/arstechnica/index
+  - name: VentureBeat (via Google News)
+    url: https://news.google.com/rss/search?q=site:venturebeat.com&hl=en&gl=US&ceid=US:en
+  - name: ServeTheHome
+    url: https://www.servethehome.com/feed/
+  - name: NVIDIA Blog
+    url: https://blogs.nvidia.com/feed/
+  - name: Microsoft Security Blog
+    url: https://www.microsoft.com/en-us/security/blog/feed/
+  - name: Google Cloud Blog - Security
+    url: https://cloudblog.withgoogle.com/products/identity-security/rss/
+  - name: IBM Research Blog
+    url: https://research.ibm.com/rss
+  - name: Intel (via Google News)
+    url: https://news.google.com/rss/search?q=Intel+(%22confidential+computing%22+OR+TDX+OR+SGX+OR+enclave+OR+attestation)&hl=en&gl=US&ceid=US:en
+  - name: BBC Technology
+    url: https://feeds.bbci.co.uk/news/technology/rss.xml
+  - name: TechCrunch
+    url: https://techcrunch.com/feed/
+  - name: ZDNet Security
+    url: https://www.zdnet.com/topic/security/rss.xml
+  - name: Google News CC
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en&gl=US&ceid=US:en
+  - name: The New Stack
+    url: https://thenewstack.io/feed/
+  - name: MIT Technology Review
+    url: https://www.technologyreview.com/feed/
+  - name: InformationWeek
+    url: https://www.informationweek.com/rss.xml
+  - name: Dark Reading Security
+    url: https://www.darkreading.com/rss.xml
+  - name: LWN.net
+    url: https://lwn.net/headlines/newrss
+  - name: Phoronix
+    url: https://www.phoronix.com/rss.php
+  - name: Linux Magazine
+    url: https://www.linux-magazine.com/rss/feed/lmi_news
+  - name: SD Times
+    url: https://sdtimes.com/feed/
+  - name: Linux Foundation Blog
+    url: https://www.linuxfoundation.org/blog/rss.xml
+  - name: Ubuntu Blog
+    url: https://ubuntu.com/blog/feed
+  - name: Red Hat Blog
+    url: https://www.redhat.com/en/rss/blog
+  - name: SUSE Blog
+    url: https://www.suse.com/c/feed/
