@@ -53,3 +53,6 @@ cc-news-past-month.md
 # Stray directory created by a literal '~' in an old command; contains
 # superseded copies of the skill docs. Safe to delete.
 /~/
+
+# Generated webfeed editions and run state
+webfeed/
