@@ -29,6 +29,61 @@ _FETCH_PROMPT = (
 )
 
 
+# Outlets treated as UK for --webfeed-exclude-uk. Any host under a `.uk` TLD
+# is UK automatically; this list covers UK outlets on other TLDs. Matched
+# against the registrable suffix, so `www.` and subdomains are covered. Extend
+# without code changes via a top-level `uk_outlets:` list in feeds.yaml.
+# Deliberately omitted: Reuters (London newsroom, Canadian parent) and other
+# outlets whose nationality is arguable — add them to feeds.yaml if wanted.
+UK_OUTLET_DOMAINS = (
+    "bbc.com", "bbci.co.uk", "theregister.com", "theguardian.com",
+    "computerweekly.com", "ft.com", "economist.com", "techradar.com",
+    "itpro.com", "techmonitor.ai", "infosecurity-magazine.com",
+    "datacenterdynamics.com", "cityam.com", "thestack.technology",
+    "uktech.news", "silicon.co.uk", "computing.co.uk",
+)
+
+# Hosts that syndicate other publishers' articles: the real publisher must be
+# read from the entry's <source> element rather than from the link.
+_AGGREGATOR_HOSTS = ("news.google.com",)
+
+
+def _host(url):
+    try:
+        host = urllib.parse.urlparse(url or "").hostname or ""
+    except ValueError:
+        return ""
+    return host.lower().rstrip(".")
+
+
+def is_uk_host(host, extra_domains=()):
+    """True if `host` belongs to a UK outlet: a .uk TLD or a listed domain."""
+    host = (host or "").lower().rstrip(".")
+    if not host:
+        return False
+    if host == "uk" or host.endswith(".uk"):
+        return True
+    return any(host == d or host.endswith("." + d)
+               for d in (*UK_OUTLET_DOMAINS, *extra_domains))
+
+
+def publisher_host(link, source_href="", feed_url=""):
+    """
+    Best guess at the host of the outlet that published an article.
+
+    Google News links are redirects through news.google.com, so for those the
+    <source href> is authoritative. Otherwise the article link wins, then the
+    feed URL.
+    """
+    link_host = _host(link)
+    if source_href and (not link_host or link_host in _AGGREGATOR_HOSTS):
+        return _host(source_href)
+    if link_host and link_host not in _AGGREGATOR_HOSTS:
+        return link_host
+    feed_host = _host(feed_url)
+    return "" if feed_host in _AGGREGATOR_HOSTS else feed_host
+
+
 def normalize_url(url):
     """
     Normalize URL by removing common tracking parameters and fragments.
@@ -1204,7 +1259,7 @@ def load_webfeed_state(path):
     return state, None
 
 
-def save_webfeed_state(path, start, end, output, matched, clock, cutoff):
+def save_webfeed_state(path, start, end, output, matched, clock, cutoff, filters=()):
     """
     Record this run so the next webfeed run knows where to resume.
 
@@ -1223,6 +1278,9 @@ def save_webfeed_state(path, start, end, output, matched, clock, cutoff):
         "last_run_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "last_output": os.path.abspath(output),
         "last_matched": matched,
+        # Recorded for traceability only; resume logic ignores it. Filtered
+        # articles are not carried forward to later editions.
+        "last_filters": list(filters),
     }
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
@@ -1388,9 +1446,17 @@ def main():
                              "making editions whole-day. Either way the next edition resumes "
                              "from this edition's exact end instant, so articles are never "
                              "duplicated")
+    parser.add_argument("--webfeed-exclude-uk", action="store_true",
+                        help="Webfeed mode only: drop articles published by UK outlets "
+                             "(any .uk domain, plus The Register, BBC, The Guardian, "
+                             "Computer Weekly and others; extend with 'uk_outlets:' in "
+                             "feeds.yaml). Native UK feeds are skipped entirely")
     parser.add_argument("--webfeed-consolidate-days", type=int, default=90,
                         help="Look-back window in days for a consolidated first webfeed run (default: 90)")
     args = parser.parse_args()
+
+    if args.webfeed_exclude_uk and not args.webfeed:
+        parser.error("--webfeed-exclude-uk requires --webfeed")
 
     webfeed_state_path = None
     webfeed_start_exclusive = None
@@ -1481,6 +1547,15 @@ def main():
     with open(args.feeds) as f:
         feed_config = yaml.safe_load(f)
     feeds = feed_config.get("feeds", [])
+    extra_uk = tuple(str(d).lower().lstrip(".") for d in (feed_config.get("uk_outlets") or []))
+    exclude_uk = args.webfeed and args.webfeed_exclude_uk
+    uk_excluded = {}  # host -> count of in-window entries dropped
+
+    def _drop_uk(host):
+        if exclude_uk and is_uk_host(host, extra_uk):
+            uk_excluded[host] = uk_excluded.get(host, 0) + 1
+            return True
+        return False
 
     print("Fetching CCC members...", file=sys.stderr)
     try:
@@ -1512,6 +1587,14 @@ def main():
     for feed_def in feeds:
         feed_name = feed_def.get("name", feed_def["url"])
         url = feed_def["url"]
+        # A native UK feed can only yield UK articles: skip the fetch outright.
+        # Aggregator feeds (Google News) are filtered per entry below.
+        feed_host = _host(url)
+        if (exclude_uk and feed_host not in _AGGREGATOR_HOSTS
+                and is_uk_host(feed_host, extra_uk)):
+            print(f"Skipping UK outlet feed: {feed_name} (--webfeed-exclude-uk)", file=sys.stderr)
+            uk_excluded.setdefault(feed_host, 0)
+            continue
         print(f"Crawling: {feed_name}", file=sys.stderr)
 
         try:
@@ -1535,6 +1618,9 @@ def main():
 
             title = entry.get("title", "")
             link = entry.get("link", "")
+            source_href = (entry.get("source") or {}).get("href", "")
+            if _drop_uk(publisher_host(link, source_href, url)):
+                continue
             summary = entry.get("summary", "")
             tags = " ".join(t.get("term", "") for t in entry.get("tags", []))
             author = entry.get("author", "")
@@ -1607,6 +1693,8 @@ def main():
 
                 if normalize_url(url) in seen_urls:
                     continue
+                if _drop_uk(publisher_host(url, (article.get("publisher") or {}).get("href", ""))):
+                    continue
 
                 pub = None
                 try:
@@ -1657,6 +1745,15 @@ def main():
             print(f"  Matched {gnews_matched} from Google News.", file=sys.stderr)
 
     print(f"\nScanned {total_entries} entries total.", file=sys.stderr)
+    if exclude_uk:
+        # Counted before keyword filtering, so this is how much UK material was
+        # in the window, not how many CC articles were lost.
+        dropped = sum(uk_excluded.values())
+        detail = ", ".join(f"{h} {n}" if n else f"{h} (feed skipped)"
+                           for h, n in sorted(uk_excluded.items(), key=lambda kv: (-kv[1], kv[0])))
+        print(f"Excluded {dropped} in-window entries from UK outlets before keyword "
+              f"filtering (--webfeed-exclude-uk){': ' + detail if detail else ''}.",
+              file=sys.stderr)
     print(f"Matched {total_matched} Confidential Computing articles.", file=sys.stderr)
 
     # Deduplicate articles before clustering
@@ -1709,6 +1806,10 @@ def main():
         f.write(f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
         f.write(f"**Keywords:** {args.keywords}\n")
         f.write(f"**Total matched:** {total_matched}\n\n")
+        if exclude_uk:
+            # Invisible, like the other webfeed tags, but lets a consumer tell
+            # a filtered edition from an unfiltered one.
+            f.write("<!-- cc-news filter=exclude-uk -->\n\n")
 
         no_cluster = args.no_cluster
         webfeed = args.webfeed
@@ -1794,7 +1895,8 @@ def main():
     if args.webfeed and webfeed_state_path and not args.webfeed_adhoc:
         save_webfeed_state(webfeed_state_path, args.start, args.end,
                            args.output, total_matched, args.webfeed_time,
-                           webfeed_end_cutoff)
+                           webfeed_end_cutoff,
+                           filters=["exclude-uk"] if exclude_uk else [])
         print(f"Recorded webfeed run state in {webfeed_state_path}", file=sys.stderr)
     elif args.webfeed and args.webfeed_adhoc:
         # A one-off backfill must not rewind the weekly resume point.
