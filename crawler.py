@@ -723,13 +723,42 @@ def classify_stories_ai(articles):
         print(f"[warn] AI classification failed ({e}); keeping heuristic baseline classification.", file=sys.stderr)
 
 
+WEBFEED_EDITION_RE = r"^(?:subjects-)?webfeed-{date}-(\d{{2,}})\.(?:md|json)$"
+
+
+def next_webfeed_output(directory, date_str):
+    """
+    Return the default path for this run's webfeed edition:
+    `webfeed-DATE-NN.md`, where NN starts at 00 and goes up by one for each
+    edition written that UTC day.
+
+    Before 2.9.0 every edition on a day shared `webfeed-DATE.md`, so a second
+    run overwrote the first while the resume point still moved forward, and
+    the first edition's articles were lost from the published files.
+
+    NN is one more than the highest number already used by either the report
+    or its subject index, not the first unused number. Filling a gap left by
+    a deleted file would put a later edition before an earlier one when the
+    files are sorted.
+    """
+    pattern = re.compile(WEBFEED_EDITION_RE.format(date=re.escape(date_str)))
+    try:
+        names = os.listdir(directory or ".")
+    except OSError:
+        names = []
+    used = [int(m.group(1)) for m in map(pattern.match, names) if m]
+    seq = max(used) + 1 if used else 0
+    name = f"webfeed-{date_str}-{seq:02d}.md"
+    return os.path.join(directory, name) if directory else name
+
+
 def derive_subjects_json_path(md_output):
     directory = os.path.dirname(md_output)
     basename = os.path.basename(md_output)
     if basename.startswith("report-") and basename.endswith(".md"):
         json_name = "subjects-" + basename[len("report-"):-len(".md")] + ".json"
     elif basename.startswith("webfeed-") and basename.endswith(".md"):
-        # `subjects-webfeed-DATE.json`: still matches the `subjects-*.json`
+        # `subjects-webfeed-DATE-NN.json`: still matches the `subjects-*.json`
         # glob that ccc-potentials consumes, so an edition contributes news
         # coverage signals — but does not overwrite a report's index, which
         # covers a wider period (30 days by default vs the edition's 7) and
@@ -1306,8 +1335,9 @@ def main():
                         help="Comma-separated list of keywords (case-insensitive)")
     parser.add_argument("--output", default=None,
                         help="Output path. Defaults to report-YYYY-MM-DD.md, or "
-                             "webfeed-YYYY-MM-DD.md in --webfeed mode so editions are "
-                             "never confused with ordinary reports")
+                             "webfeed-YYYY-MM-DD-NN.md in --webfeed mode (NN = 00, 01, ... "
+                             "per edition that UTC day) so editions are never confused "
+                             "with ordinary reports or with each other")
     parser.add_argument("--members-cache", default="members.json")
     parser.add_argument("--force-refresh", action="store_true",
                         help="Re-fetch CCC members from LFX even if the cache is fresh")
@@ -1375,7 +1405,11 @@ def main():
         if args.webfeed:
             # UTC, matching the edition boundaries, so the filename agrees with
             # the Period header rather than drifting near local midnight.
-            args.output = f"webfeed-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.md"
+            # Numbered per day so a second edition never overwrites the first.
+            # Chosen before the early exits below, but those write nothing,
+            # so they do not use up a number.
+            args.output = next_webfeed_output(
+                "", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
         else:
             # Local date, unchanged from previous versions.
             args.output = f"report-{datetime.now().strftime('%Y-%m-%d')}.md"
@@ -1431,8 +1465,8 @@ def main():
             # the resume point past news that has not been reported.
             print(f"[webfeed] Only {int(span)}s since the last edition "
                   f"(minimum {args.webfeed_min_window}s). This looks like an "
-                  f"accidental re-run; refusing to overwrite "
-                  f"{args.output} with a near-empty edition. Use "
+                  f"accidental re-run; refusing to publish a near-empty "
+                  f"edition and advance the resume point. Use "
                   f"--webfeed-min-window 0 to override, or --start/--end for "
                   f"an ad-hoc report.", file=sys.stderr)
             sys.exit(0)
