@@ -1123,7 +1123,7 @@ def group_articles_by_story(categorized, members, use_ai=True):
     return cluster_labels
 
 
-def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False):
+def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, webfeed=False):
     """
     Write one report section's article list.
 
@@ -1136,13 +1136,13 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False):
     are rendered as plain bullets so the report stays readable.
     """
     if not articles:
-        f.write("None found.\n\n")
+        if not webfeed:
+            f.write("None found.\n\n")
         return
 
     if no_cluster or not cluster_labels:
         for a in articles:
             f.write(f"- [{a['title']}]({a['url']}) {detail_fn(a)}\n")
-        f.write("\n")
         return
 
     # Group by cluster
@@ -1164,8 +1164,6 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False):
             f.write(f"\n**{label}**\n")
             for a in group:
                 f.write(f"  - [{a['title']}]({a['url']}) {detail_fn(a)}\n")
-
-    f.write("\n")
 
 
 def keyword_match(text, keywords):
@@ -1795,18 +1793,24 @@ def main():
     sorted_subjects = sorted(subject_index.items(), key=lambda kv: (-len(kv[1]), kv[0].lower()))
 
     with open(args.output, "w") as f:
-        f.write("# Confidential Computing News Report\n\n")
         if args.webfeed:
-            # Show the true half-open boundaries, so it is unambiguous which
-            # edition a boundary-day article belongs to.
-            f.write(f"**Period:** {start_dt:%Y-%m-%d %H:%M:%S} UTC (inclusive) to "
-                    f"{end_dt:%Y-%m-%d %H:%M:%S} UTC (exclusive)\n")
+            f.write("---\n")
+            f.write(f"title: Confidential Computing News Report - {args.end}\n")
+            f.write("post_status: publish\n")
+            f.write(f"post_date: {end_dt:%Y-%m-%d %H:%M:%S}\n")
+            f.write("taxonomy:\n")
+            f.write("category:\n")
+            f.write("- newsfeed\n")
+            f.write("---\n\n")
+            f.write(f"**Period:** {start_dt:%Y-%m-%d %H:%M:%S} UTC to "
+                    f"{end_dt:%Y-%m-%d %H:%M:%S} UTC\n")
         else:
+            f.write("# Confidential Computing News Report\n\n")
             f.write(f"**Period:** {args.start} to {args.end}\n")
-        f.write(f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
-        f.write(f"**Keywords:** {args.keywords}\n")
-        f.write(f"**Total matched:** {total_matched}\n\n")
-        if exclude_uk:
+            f.write(f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+            f.write(f"**Keywords:** {args.keywords}\n")
+            f.write(f"**Total matched:** {total_matched}\n\n")
+        if not args.webfeed and exclude_uk:
             # Invisible, like the other webfeed tags, but lets a consumer tell
             # a filtered edition from an unfiltered one.
             f.write("<!-- cc-news filter=exclude-uk -->\n\n")
@@ -1818,47 +1822,40 @@ def main():
             """Invisible (HTML comment) category tag for webfeed mode."""
             if not webfeed:
                 return ""
-            bits = [f"category={category}"]
-            story_type = a.get("story_type") or "General CC News"
-            bits.append(f"story-type={story_type}")
-            if a.get("member"):
-                bits.append(f"member={a['member']}")
-            return "<!-- cc-news " + "; ".join(bits) + " -->"
+            # Returning empty to remove the HTML comment tag from each article in webfeed mode
+            return ""
 
-        if webfeed:
-            f.write("<!-- cc-news section=by-member -->\n\n")
-        else:
+        if not webfeed:
             f.write("## Articles BY Members\n\n")
         _write_section(
             f, categorized["by_member"], cluster_labels,
-            lambda a: f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}, Member: {a['member']}) - {a['published']}{_tag('by-member', a)}",
+            lambda a: f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}{', Member: ' + a['member'] if not webfeed else ''}) - {a['published']}{_tag('by-member', a)}",
             no_cluster=no_cluster,
+            webfeed=webfeed,
         )
 
-        if webfeed:
-            f.write("<!-- cc-news section=about-member -->\n\n")
-        else:
+        if not webfeed:
             f.write("## Articles ABOUT Members (or mentioning them)\n\n")
         _write_section(
             f, categorized["about_member"], cluster_labels,
-            lambda a: f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}, Mentions: {a['member']}) - {a['published']}{_tag('about-member', a)}",
+            lambda a: f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}{', Mentions: ' + a['member'] if not webfeed else ''}) - {a['published']}{_tag('about-member', a)}",
             no_cluster=no_cluster,
+            webfeed=webfeed,
         )
 
-        if webfeed:
-            f.write("<!-- cc-news section=other -->\n\n")
-        else:
+        if not webfeed:
             f.write("## Other Articles (Don't mention members)\n\n")
 
         def _other_detail(a):
             subject = infer_subject(a["title"])
-            mention = f", Subject: {subject}" if subject else ""
+            mention = f", Subject: {subject}" if subject and not webfeed else ""
             return f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}{mention}) - {a['published']}{_tag('other', a)}"
 
         _write_section(
             f, categorized["dont"], cluster_labels,
             _other_detail,
             no_cluster=no_cluster,
+            webfeed=webfeed,
         )
 
         if not webfeed:
