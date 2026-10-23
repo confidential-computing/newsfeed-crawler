@@ -398,6 +398,55 @@ def fetch_feed(url, attempts=2):
     user-agent with 403/429. Fetching the bytes ourselves with realistic
     headers fixes most of those cases.
     """
+    # Special handle for SUSE's JSON Blog API
+    if "/api/blogs" in url or ".json" in url:
+        last_exc = None
+        for attempt in range(attempts):
+            try:
+                resp = requests.get(url, timeout=20, headers=FEED_HEADERS)
+                if resp.status_code == 200:
+                    import dateutil.parser as dp
+                    import calendar
+                    from types import SimpleNamespace
+                    data = resp.json()
+                    
+                    class MockFeed:
+                        def __init__(self):
+                            self.bozo = False
+                            self.bozo_exception = None
+                            self.entries = []
+
+                    parsed = MockFeed()
+                    for item in data.get("results", []):
+                        # Convert SUSE's fields into FeedParser-like fields
+                        entry = feedparser.FeedParserDict()
+                        entry["title"] = item.get("title", "")
+                        entry["link"] = item.get("url", "")
+                        if entry["link"] and not entry["link"].startswith("http"):
+                            entry["link"] = "https://www.suse.com" + entry["link"]
+                        entry["summary"] = item.get("excerpt", "")
+                        entry["author"] = item.get("author", "")
+                        
+                        # Set published dates so entry_datetime(entry) works seamlessly
+                        date_str = item.get("date")
+                        if date_str:
+                            try:
+                                dt = dp.parse(date_str).replace(tzinfo=timezone.utc)
+                                entry["published_parsed"] = dt.timetuple()
+                                # Also set standard fallback fields
+                                entry["published"] = date_str
+                            except Exception:
+                                pass
+                        parsed.entries.append(entry)
+                    return parsed
+                else:
+                    last_exc = f"HTTP {resp.status_code}"
+            except Exception as e:
+                last_exc = e
+            if attempt + 1 < attempts:
+                time.sleep(2)
+        raise ValueError(last_exc or "Failed to fetch JSON feed")
+
     last_exc = None
     for attempt in range(attempts):
         try:
