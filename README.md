@@ -81,6 +81,8 @@ python crawler.py --store-only
 python crawler.py --no-entry-store
 ```
 
+If the filesystem holding the store is more than 80% full (`--entry-store-disk-limit`), nothing new is saved: `--store-only` logs an error, removes expired days and exits with status 2 without fetching, and normal runs log the error but still read the stored entries.
+
 The store-only output lists how far back each feed reaches. If a feed's oldest entry is newer than the time between runs, the runs aren't frequent enough to catch all of its items.
 
 At the end of each run a per-feed yield table (entries live+stored / in window / matched) is printed to stderr, which is useful when judging whether a new feed earns its place.

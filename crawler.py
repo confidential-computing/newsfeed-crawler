@@ -532,6 +532,28 @@ def fetch_feed(url, attempts=2):
 # several times a day and saves every entry here; every crawl then merges
 # the stored entries for each feed with what the feed shows live.
 ENTRY_STORE_KEEP_DAYS = 35
+# Stop saving entries when the store's filesystem is fuller than this.
+ENTRY_STORE_DISK_LIMIT = 80
+
+
+def disk_percent_used(path):
+    """Percentage of the filesystem holding *path* in use, as df reports it."""
+    import shutil
+    usage = shutil.disk_usage(path)
+    # df's Use% leaves out root-reserved blocks: used / (used + available).
+    return 100 * usage.used / (usage.used + usage.free)
+
+
+def store_disk_full(args):
+    """Log an error and return True if the entry store's disk is over the limit."""
+    os.makedirs(args.entry_store, exist_ok=True)
+    pct = disk_percent_used(args.entry_store)
+    if pct <= args.entry_store_disk_limit:
+        return False
+    print(f"[store] ERROR: the filesystem holding {args.entry_store} is {pct:.0f}% full "
+          f"(limit {args.entry_store_disk_limit}%). Not saving feed entries until "
+          f"space is freed.", file=sys.stderr)
+    return True
 
 
 def _entry_key(entry):
@@ -573,9 +595,10 @@ class EntryStore:
     *keep_days* are deleted.
     """
 
-    def __init__(self, directory, keep_days=ENTRY_STORE_KEEP_DAYS):
+    def __init__(self, directory, keep_days=ENTRY_STORE_KEEP_DAYS, read_only=False):
         self.directory = directory
         self.keep_days = keep_days
+        self.read_only = read_only
         self.by_feed = {}  # feed url -> {entry key: record}
         os.makedirs(directory, exist_ok=True)
 
@@ -608,6 +631,8 @@ class EntryStore:
 
     def add(self, feed_url, entries, now):
         """Save the entries not stored yet; return how many were new."""
+        if self.read_only:
+            return 0
         known = self.by_feed.setdefault(feed_url, {})
         new = []
         for entry in entries:
@@ -651,7 +676,12 @@ def store_only(args, now):
     """Fetch every feed and save new entries; no matching or report."""
     with open(args.feeds) as f:
         feeds = yaml.safe_load(f).get("feeds", [])
-    store = EntryStore(args.entry_store, args.entry_store_days).load()
+    store = EntryStore(args.entry_store, args.entry_store_days)
+    if store_disk_full(args):
+        # Pruning only frees space, so still drop expired days.
+        store.prune(now)
+        return 2
+    store.load()
     socket.setdefaulttimeout(60)
     failed = 0
     print(f"[store] {now:%Y-%m-%d %H:%M:%S} UTC: fetching {len(feeds)} feeds "
@@ -1766,6 +1796,11 @@ def main():
                              "(default: feed-store beside this script)")
     parser.add_argument("--entry-store-days", type=int, default=ENTRY_STORE_KEEP_DAYS,
                         help=f"Days of saved entries to keep (default: {ENTRY_STORE_KEEP_DAYS})")
+    parser.add_argument("--entry-store-disk-limit", type=int, default=ENTRY_STORE_DISK_LIMIT,
+                        metavar="PERCENT",
+                        help="Stop saving entries, and make --store-only skip fetching, when the "
+                             "store's filesystem is more than PERCENT full; an error is logged "
+                             f"(default: {ENTRY_STORE_DISK_LIMIT})")
     parser.add_argument("--no-entry-store", action="store_true",
                         help="Neither read nor save stored feed entries")
     parser.add_argument("--store-only", action="store_true",
@@ -1929,8 +1964,10 @@ def main():
     total_matched = 0
     feed_health = []
     feed_yield = []  # (name, entries, in-window, matched) per fetched feed
+    # A full disk stops new entries being saved, but stored ones are still read.
     store = None if args.no_entry_store else EntryStore(
-        args.entry_store, args.entry_store_days).load()
+        args.entry_store, args.entry_store_days,
+        read_only=store_disk_full(args)).load()
     crawl_time = datetime.now(timezone.utc).replace(microsecond=0)
 
     for feed_def in feeds:

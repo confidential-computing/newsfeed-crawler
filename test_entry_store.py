@@ -75,6 +75,13 @@ class TestEntryStore(unittest.TestCase):
         merged = merge_stored_entries([], store.entries_for(FEED), NOW - timedelta(days=7))
         self.assertEqual([e.get("link") for e in merged], ["https://x/recent"])
 
+    def test_read_only_store_saves_nothing(self):
+        EntryStore(self.dir).add(FEED, [entry("https://x/1")], NOW)
+        store = EntryStore(self.dir, read_only=True).load()
+        self.assertEqual(store.add(FEED, [entry("https://x/2")], NOW), 0)
+        self.assertEqual([e["link"] for e in EntryStore(self.dir).load().entries_for(FEED)],
+                         ["https://x/1"])
+
     def test_prune_removes_old_days(self):
         store = EntryStore(self.dir, keep_days=35)
         store.add(FEED, [entry("https://x/old")], NOW - timedelta(days=40))
