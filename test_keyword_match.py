@@ -57,6 +57,11 @@ class TestAcronyms(unittest.TestCase):
                      "confidential containers on Kubernetes"]:
             self.assertTrue(keyword_match(text, KEYWORDS), text)
 
+    def test_spelled_out_tee_and_confidential_ai_match(self):
+        for text in ["runs in a trusted execution environment",
+                     "Fortanix announces Confidential AI for Kubernetes"]:
+            self.assertTrue(keyword_match(text, KEYWORDS), text)
+
     def test_singapore_exchange_sgx_does_not_match(self):
         self.assertFalse(keyword_match("Shares listed on SGX rose 3%", KEYWORDS))
         self.assertTrue(keyword_match("Intel SGX is being retired", KEYWORDS))

@@ -4,7 +4,7 @@ Crawls a curated list of tech-news RSS/Atom feeds for articles about Confidentia
 
 Unlike `AG-CC-news`, this project does not depend on Google News — it fetches feeds directly.
 
-**Matching logic:** articles are included only if they match a Confidential Computing keyword. All-uppercase acronyms (`TEE`, `SGX`, `TDX`, `SEV`, `SEV-SNP`) are matched case-sensitively with word boundaries; multi-word phrases (`confidential computing`, `remote attestation`, `Arm CCA`) and `enclave` are matched case-insensitively. This avoids false positives like `tee` inside "committee" or `sev` inside "several". Matched articles are then sub-categorised by CCC member affiliation.
+**Matching logic:** articles are included only if they match a Confidential Computing keyword. All-uppercase acronyms (`TEE`, `SGX`, `TDX`, `SEV`, `SEV-SNP`) are matched case-sensitively with word boundaries; multi-word phrases (`confidential computing`, `confidential AI`, `trusted execution environment`, `remote attestation`, `Arm CCA`) and `enclave` are matched case-insensitively. Plurals match too (`TEEs`, `enclaves`). This avoids false positives like `tee` inside "committee" or `sev` inside "several". `enclave` counts only with computing context nearby, so territorial uses ("the Gaza enclave") are ignored. Matched articles are then sub-categorised by CCC member affiliation.
 
 ## Setup
 

@@ -16,7 +16,7 @@ import yaml
 from bs4 import BeautifulSoup
 
 
-DEFAULT_KEYWORDS = "confidential computing,confidential compute,enclave,TEE,SGX,TDX,SEV,SEV-SNP,Arm CCA,remote attestation,confidential VM,confidential container"
+DEFAULT_KEYWORDS = "confidential computing,confidential compute,confidential AI,trusted execution environment,enclave,TEE,SGX,TDX,SEV,SEV-SNP,Arm CCA,remote attestation,confidential VM,confidential container"
 CCC_PROJECT_UID = "54ec092e-cadd-49af-9edf-9a5c888cc283"
 MEMBERS_TTL_SECONDS = 7 * 24 * 60 * 60  # one week
 
