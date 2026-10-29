@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.11.0 — 2026-10-29
 
 ### Deduplication
 - Articles are dropped as duplicates only when they are copies: the same
