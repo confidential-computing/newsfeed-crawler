@@ -9,9 +9,13 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from crawler import DEFAULT_KEYWORDS, keyword_match
+import yaml
+
+from crawler import DEFAULT_KEYWORDS, keyword_match, keywords_for_language
 
 KEYWORDS = DEFAULT_KEYWORDS.split(",")
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "feeds.yaml")) as _f:
+    LANGUAGE_KEYWORDS = yaml.safe_load(_f).get("keywords") or {}
 
 
 class TestEnclave(unittest.TestCase):
@@ -84,6 +88,38 @@ class TestAcronyms(unittest.TestCase):
             "SGX attestation keys leaked",
         ]:
             self.assertTrue(keyword_match(text, KEYWORDS), text)
+
+
+class TestSpanishPortuguese(unittest.TestCase):
+    """Feeds with lang: es / pt use the keyword lists in feeds.yaml."""
+
+    def match(self, text, lang):
+        return keyword_match(text, keywords_for_language(KEYWORDS, LANGUAGE_KEYWORDS, lang), lang)
+
+    def test_translated_terms_match(self):
+        for lang, text in [
+            ("es", "Microsoft amplía la computación confidencial en Azure"),
+            ("es", "Los entornos de ejecución confiables llegan a la nube"),
+            ("es", "Apple guarda las claves en un enclave seguro del chip"),
+            ("pt", "Google lança computação confidencial para IA no Brasil"),
+            ("pt", "Nova vulnerabilidade afeta o enclave SGX da Intel"),
+        ]:
+            self.assertTrue(self.match(text, lang), text)
+
+    def test_acronyms_and_english_terms_still_match(self):
+        self.assertTrue(self.match("Intel presenta TDX para centros de datos", "es"))
+        self.assertTrue(self.match("A AMD anuncia confidential computing com SEV-SNP", "pt"))
+
+    def test_bare_enclave_is_an_ordinary_word(self):
+        for lang, text in [
+            ("es", "Israel bombardea el enclave palestino de Gaza"),
+            ("es", "Ceuta, el enclave español, refuerza su seguridad informática"),
+            ("pt", "Cabinda, enclave angolano, recebe investimentos em tecnologia"),
+        ]:
+            self.assertFalse(self.match(text, lang), text)
+
+    def test_english_feeds_unchanged(self):
+        self.assertEqual(keywords_for_language(KEYWORDS, LANGUAGE_KEYWORDS, "en"), KEYWORDS)
 
 
 if __name__ == "__main__":

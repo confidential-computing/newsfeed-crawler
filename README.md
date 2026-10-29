@@ -71,6 +71,18 @@ python crawler.py --only-region in --only-region kr
 
 `--webfeed-exclude-uk` still works and is equivalent to `--exclude-region uk` in webfeed mode.
 
+## Feeds in other languages
+
+A feed sets `lang:` (e.g. `es`, `pt`; default `en`) when its articles aren't in English. Its articles are matched against the English keywords plus the language's list under the top-level `keywords:` mapping in `feeds.yaml`. Acronyms such as TEE, SGX and TDX need no translation. Some English keywords are ordinary words in another language: in Spanish and Portuguese bare "enclave" means a territorial enclave, so there only qualified forms such as "enclave seguro" count.
+
+Matched non-English titles are translated into English with the `claude` CLI before deduplication and clustering, so stories are compared in one language. Reports and editions show the English title as the link, followed by the original:
+
+```
+- [Microsoft expands confidential computing on Azure](https://...) (original: Microsoft amplía la computación confidencial en Azure) ...
+```
+
+Translations are cached in `translations.json` (`--translations-cache`), so each title is translated once. If translation fails, the original title is shown and a warning is printed. `--no-translate` skips translation.
+
 ## Stored feed entries
 
 Many feeds list only the last few hours or a day of items, so a weekly run would miss most of their week. `--store-only` fetches every feed and saves new entries to `feed-store/` (one JSON-lines file per UTC day, kept for 35 days), then exits without matching or writing a report. Every normal run merges the stored entries for each feed with what the feed shows live, and still uses stored entries when a feed fails to load.

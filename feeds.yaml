@@ -10,6 +10,54 @@
 #   timezone: IANA zone (e.g. Asia/Seoul) for feeds whose dates carry no
 #           zone of their own. Without it such dates are read as UTC.
 #           Dates that do state a zone are left alone.
+#   lang:   language of the feed's articles (es, pt, ...; default en). Its
+#           articles are matched against the English keywords plus the
+#           language's list under `keywords:` below, and their titles are
+#           shown in English with the original after them.
+#
+# Keywords per language, added to the English ones (--keywords) for feeds with
+# that `lang:`. Acronyms (TEE, SGX, TDX, SEV) need no translation. In Spanish
+# and Portuguese bare "enclave" is an ordinary word, so only qualified forms
+# count there.
+keywords:
+  es:
+    - computación confidencial
+    - informática confidencial
+    - IA confidencial
+    - inteligencia artificial confidencial
+    - entorno de ejecución confiable
+    - entornos de ejecución confiables
+    - entorno de ejecución de confianza
+    - entornos de ejecución de confianza
+    - entorno de ejecución seguro
+    - atestación remota
+    - máquina virtual confidencial
+    - máquinas virtuales confidenciales
+    - contenedores confidenciales
+    - enclave seguro
+    - enclaves seguros
+    - enclave de seguridad
+    - enclave SGX
+    - enclaves SGX
+    - Secure Enclave
+  pt:
+    - computação confidencial
+    - IA confidencial
+    - inteligência artificial confidencial
+    - ambiente de execução confiável
+    - ambientes de execução confiáveis
+    - ambiente de execução seguro
+    - atestação remota
+    - máquina virtual confidencial
+    - máquinas virtuais confidenciais
+    - contêineres confidenciais
+    - containers confidenciais
+    - enclave seguro
+    - enclaves seguros
+    - enclave de segurança
+    - enclave SGX
+    - enclaves SGX
+    - Secure Enclave
 feeds:
   - name: The Register - Security
     url: https://www.theregister.com/security/headlines.atom
@@ -319,3 +367,132 @@ feeds:
     url: https://news.google.com/rss/search?q=confidential+computing&hl=en-NG&gl=NG&ceid=NG:en
   - name: Google News CC - Kenya
     url: https://news.google.com/rss/search?q=confidential+computing&hl=en-KE&gl=KE&ceid=KE:en
+
+  # --- Spanish (lang: es) ---
+  - name: Computerworld España
+    url: https://www.computerworld.es/feed/
+    region: es
+    lang: es
+  - name: Silicon.es
+    url: https://www.silicon.es/feed
+    region: es
+    lang: es
+  - name: Revista Byte TI
+    url: https://revistabyte.es/feed/
+    region: es
+    lang: es
+  - name: Muy Seguridad
+    url: https://www.muyseguridad.net/feed/
+    region: es
+    lang: es
+  - name: MuyComputerPro
+    url: https://www.muycomputerpro.com/feed/
+    region: es
+    lang: es
+  - name: Xataka
+    url: https://www.xataka.com/index.xml
+    region: es
+    lang: es
+  - name: Hipertextual
+    url: https://hipertextual.com/feed
+    region: es
+    lang: es
+  - name: Channel Partner
+    url: https://www.channelpartner.es/feed/
+    region: es
+    lang: es
+  - name: Computing España
+    url: https://www.computing.es/feed/
+    region: es
+    lang: es
+  - name: Data Center Market
+    url: https://www.datacentermarket.es/feed/
+    region: es
+    lang: es
+  - name: Red Seguridad
+    url: https://www.redseguridad.com/feed/
+    region: es
+    lang: es
+  # IT User has no working feed
+  - name: IT User (via Google News)
+    url: https://news.google.com/rss/search?q=site:ituser.es+when:7d&hl=es&gl=ES&ceid=ES:es
+    region: es
+    lang: es
+  - name: ITSitio
+    url: https://www.itsitio.com/feed/
+    region: latam
+    lang: es
+  - name: DPL News
+    url: https://dplnews.com/feed/
+    region: latam
+    lang: es
+  - name: Infobae - Tecno
+    url: https://www.infobae.com/arc/outboundfeeds/rss/category/tecno/
+    region: ar
+    lang: es
+  # TyN Magazine has no working feed
+  - name: TyN Magazine (via Google News)
+    url: https://news.google.com/rss/search?q=site:tynmagazine.com+when:7d&hl=es-419&gl=AR&ceid=AR:es-419
+    region: ar
+    lang: es
+  # Spain and Latin American editions return near-identical results, so one
+  # of each. "confidential computing" is often left untranslated.
+  - name: Google News CC - Spanish (Spain)
+    url: https://news.google.com/rss/search?q=%22computaci%C3%B3n+confidencial%22+OR+%22entorno+de+ejecuci%C3%B3n+confiable%22+OR+%22IA+confidencial%22+OR+%22confidential+computing%22&hl=es&gl=ES&ceid=ES:es
+    lang: es
+  - name: Google News CC - Spanish (Latin America)
+    url: https://news.google.com/rss/search?q=%22computaci%C3%B3n+confidencial%22+OR+%22entorno+de+ejecuci%C3%B3n+confiable%22+OR+%22IA+confidencial%22+OR+%22confidential+computing%22&hl=es-419&gl=MX&ceid=MX:es-419
+    lang: es
+
+  # --- Portuguese (lang: pt) ---
+  - name: Convergência Digital
+    url: https://www.convergenciadigital.com.br/feed/
+    region: br
+    lang: pt
+  - name: Baguete
+    url: https://www.baguete.com.br/rss
+    region: br
+    lang: pt
+  - name: TI Inside
+    url: https://tiinside.com.br/feed/
+    region: br
+    lang: pt
+  - name: IT Forum
+    url: https://itforum.com.br/feed/
+    region: br
+    lang: pt
+  - name: Canaltech
+    url: https://canaltech.com.br/rss/
+    region: br
+    lang: pt
+  - name: Tecmundo
+    url: https://rss.tecmundo.com.br/feed
+    region: br
+    lang: pt
+  - name: Olhar Digital
+    url: https://olhardigital.com.br/feed/
+    region: br
+    lang: pt
+  - name: CISO Advisor
+    url: https://www.cisoadvisor.com.br/feed/
+    region: br
+    lang: pt
+  - name: Tecnoblog
+    url: https://tecnoblog.net/feed/
+    region: br
+    lang: pt
+  - name: SAPO Tek
+    url: https://tek.sapo.pt/rss
+    region: pt
+    lang: pt
+  # IT Insight has no working feed
+  - name: IT Insight (via Google News)
+    url: https://news.google.com/rss/search?q=site:itinsight.pt+when:7d&hl=pt-PT&gl=PT&ceid=PT:pt-150
+    region: pt
+    lang: pt
+  - name: Google News CC - Portuguese (Brazil)
+    url: https://news.google.com/rss/search?q=%22computa%C3%A7%C3%A3o+confidencial%22+OR+%22ambiente+de+execu%C3%A7%C3%A3o+confi%C3%A1vel%22+OR+%22IA+confidencial%22+OR+%22confidential+computing%22&hl=pt-BR&gl=BR&ceid=BR:pt-419
+    lang: pt
+  - name: Google News CC - Portuguese (Portugal)
+    url: https://news.google.com/rss/search?q=%22computa%C3%A7%C3%A3o+confidencial%22+OR+%22ambiente+de+execu%C3%A7%C3%A3o+confi%C3%A1vel%22+OR+%22IA+confidencial%22+OR+%22confidential+computing%22&hl=pt-PT&gl=PT&ceid=PT:pt-150
+    lang: pt

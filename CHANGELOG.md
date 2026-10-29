@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Languages
+- Feeds can be in other languages (`lang:` in feeds.yaml). Their articles are
+  matched against the English keywords plus the language's own list under
+  `keywords:`; in Spanish and Portuguese bare "enclave" doesn't count.
+- Non-English titles are translated into English with the claude CLI (cached
+  in `translations.json`) and shown with the original after them.
+  `--no-translate` turns this off.
+- Article text fetched without a declared charset is decoded from the page's
+  own `<meta charset>`, so accented text matches.
+
+### Coverage
+- Spanish feeds from Spain and Latin America, Portuguese feeds from Brazil
+  and Portugal, and Google News searches in both languages.
+
 ## 2.11.0 — 2026-10-29
 
 ### Deduplication

@@ -70,6 +70,11 @@ OUTLET_REGIONS = {
     "techcabal.com": "ng", "techpoint.africa": "ng", "ventureburn.com": "za",
     "techweez.com": "ke", "techlabari.com": "gh", "cioafrica.co": "africa",
     "connectingafrica.com": "africa",
+    # Spanish and Portuguese
+    "xataka.com": "es", "hipertextual.com": "es", "muycomputerpro.com": "es",
+    "muyseguridad.net": "es", "redseguridad.com": "es", "itsitio.com": "latam",
+    "dplnews.com": "latam", "infobae.com": "ar", "tynmagazine.com": "ar",
+    "tecnoblog.net": "br",
 }
 
 # Country-code TLDs that identify an outlet's region. Second-level forms such
@@ -836,7 +841,11 @@ def fetch_article_text(url):
         final_host = urlparse(resp.url).netloc.lstrip("www.")
         if any(final_host == d or final_host.endswith("." + d) for d in _REDIRECT_DOMAINS):
             return ""
-        return extract_article_text(resp.text)
+        # Without a declared charset requests assumes ISO-8859-1, which garbles
+        # UTF-8 accents ("computaciÃ³n"); BeautifulSoup reads the page's own
+        # <meta charset> from the raw bytes instead.
+        declared = "charset" in resp.headers.get("content-type", "").lower()
+        return extract_article_text(resp.text if declared else resp.content)
     except Exception:
         return ""
 
@@ -1114,6 +1123,78 @@ def classify_stories_ai(articles):
 
 
 WEBFEED_EDITION_RE = r"^(?:subjects-)?webfeed-{date}-(\d{{2,}})\.(?:md|json)$"
+
+
+_TRANSLATE_PROMPT_TPL = (
+    "Translate each news headline below into natural English. Keep company, "
+    "product and person names as they are. If a headline ends with \" - \" "
+    "and a publication name, keep that suffix unchanged. If a headline is "
+    "already in English, return it unchanged. Reply with only a JSON object "
+    "mapping each id to its English headline, and no other text.\n\n"
+    "{titles_json}"
+)
+TRANSLATE_BATCH = 50
+
+
+def _translate_with_claude(titles):
+    """{title: English title} for *titles*, via the claude CLI."""
+    out = {}
+    for i in range(0, len(titles), TRANSLATE_BATCH):
+        batch = titles[i:i + TRANSLATE_BATCH]
+        prompt = _TRANSLATE_PROMPT_TPL.format(titles_json=json.dumps(
+            {str(n): t for n, t in enumerate(batch)}, ensure_ascii=False))
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--output-format", "json"],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"claude exited {result.returncode}: {result.stderr.strip()[:200]}")
+        raw = json.loads(result.stdout).get("result", "")
+        raw = re.sub(r"```(?:json)?\s*([\s\S]*?)```", r"\1", raw).strip()
+        for n, english in json.loads(raw).items():
+            if n.isdigit() and int(n) < len(batch) and isinstance(english, str):
+                out[batch[int(n)]] = english.strip()
+    return out
+
+
+def translate_titles(articles, cache_path, translate=None):
+    """
+    Give each non-English article an English `title`, keeping the original
+    in `title_original`. Translations are cached in *cache_path* by original
+    title, so each headline is translated once. If translation fails the
+    original title is kept and a warning printed.
+
+    Returns the number of articles given an English title.
+    """
+    todo = [a for a in articles if a.get("lang", "en") != "en" and a.get("title")]
+    if not todo:
+        return 0
+    try:
+        with open(cache_path) as f:
+            cache = json.load(f)
+    except (FileNotFoundError, ValueError):
+        cache = {}
+
+    missing = sorted({a["title"] for a in todo} - cache.keys())
+    if missing:
+        try:
+            cache.update((translate or _translate_with_claude)(missing))
+            tmp = cache_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(cache, f, ensure_ascii=False, indent=1, sort_keys=True)
+            os.replace(tmp, cache_path)
+        except Exception as e:
+            print(f"[warn] Could not translate {len(missing)} titles ({e}); "
+                  f"showing them untranslated.", file=sys.stderr)
+
+    translated = 0
+    for a in todo:
+        english = (cache.get(a["title"]) or "").strip()
+        if english and english != a["title"].strip():
+            a["title_original"] = a["title"]
+            a["title"] = english
+            translated += 1
+    return translated
 
 
 def next_webfeed_output(directory, date_str):
@@ -1458,6 +1539,14 @@ def group_articles_by_story(categorized, members, use_ai=True):
     return cluster_labels
 
 
+def _article_link(a):
+    """Markdown link to an article; a translated title is followed by the original."""
+    link = f"[{a['title']}]({a['url']})"
+    if a.get("title_original"):
+        link += f" (original: {a['title_original']})"
+    return link
+
+
 def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, webfeed=False):
     """
     Write one report section's article list.
@@ -1478,7 +1567,7 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, web
 
     if no_cluster or not cluster_labels:
         for a in articles:
-            f.write(f"- [{a['title']}]({a['url']}) {detail_fn(a)}\n")
+            f.write(f"- {_article_link(a)} {detail_fn(a)}\n")
         return
 
     # Group by cluster
@@ -1494,17 +1583,17 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, web
     for cid, group in sorted(groups.items(), key=_sort_key):
         if len(group) == 1:
             a = group[0]
-            f.write(f"- [{a['title']}]({a['url']}) {detail_fn(a)}\n")
+            f.write(f"- {_article_link(a)} {detail_fn(a)}\n")
         elif webfeed:
             # Published editions are plain lists: keep the story's articles
             # together, but with no label line or indent.
             for a in group:
-                f.write(f"- [{a['title']}]({a['url']}) {detail_fn(a)}\n")
+                f.write(f"- {_article_link(a)} {detail_fn(a)}\n")
         else:
             label = cluster_labels.get(cid, f"Story {cid}")
             f.write(f"\n**{label}**\n")
             for a in group:
-                f.write(f"  - [{a['title']}]({a['url']}) {detail_fn(a)}\n")
+                f.write(f"  - {_article_link(a)} {detail_fn(a)}\n")
 
 
 _ENCLAVE_RE = re.compile(r"\benclaves?\b", re.IGNORECASE)
@@ -1532,7 +1621,28 @@ def _drop_without_context(word_re, context_re, text):
         text)
 
 
-def keyword_match(text, keywords):
+# English keywords that are ordinary words in another language. For feeds in
+# that language they don't count on their own, only in the qualified forms
+# listed under the language in feeds.yaml's `keywords:` ("enclave seguro").
+# In Spanish and Portuguese "enclave" is the everyday word for a territorial
+# enclave.
+_ORDINARY_WORDS = {"es": {"enclave"}, "pt": {"enclave"}}
+
+
+def keywords_for_language(english, extra, lang):
+    """
+    Keywords to match a feed in *lang* against: the English list (acronyms
+    such as TEE, SGX and TDX appear untranslated everywhere) minus words that
+    are ordinary in *lang*, plus *extra[lang]* from feeds.yaml.
+    """
+    if not lang or lang == "en":
+        return english
+    ordinary = _ORDINARY_WORDS.get(lang, set())
+    return [k for k in english if k.lower() not in ordinary] + \
+        [str(k).strip() for k in (extra or {}).get(lang) or [] if str(k).strip()]
+
+
+def keyword_match(text, keywords, lang="en"):
     # Exclude non-Confidential Computing uses of 'enclave' or other terms
     exclude_patterns = [
         r"\bbuick\s+enclave(s)?\b",
@@ -1555,7 +1665,11 @@ def keyword_match(text, keywords):
     # Kaliningrad) than a TEE. Keep an occurrence only when computing context
     # sits close by: "secure enclave", "SGX enclave", "Nitro Enclaves",
     # "enclave memory".
-    cleaned_text = _drop_without_context(_ENCLAVE_RE, _ENCLAVE_CONTEXT_RE, cleaned_text)
+    # The context terms are English. Other languages don't match bare
+    # 'enclave' at all (see _ORDINARY_WORDS), and their qualified forms
+    # ("enclave seguro") must not be stripped.
+    if lang == "en":
+        cleaned_text = _drop_without_context(_ENCLAVE_RE, _ENCLAVE_CONTEXT_RE, cleaned_text)
 
     # Bare 'SGX' in Asian business news is usually the Singapore Exchange
     # ("SGX hunts for new CEO", "SGX posted record revenue"), in phrasings
@@ -1777,6 +1891,10 @@ def main():
                              "per edition that UTC day) so editions are never confused "
                              "with ordinary reports or with each other")
     parser.add_argument("--members-cache", default=os.path.join(here, "members.json"))
+    parser.add_argument("--translations-cache", default=os.path.join(here, "translations.json"),
+                        help="Cache of English translations of non-English titles")
+    parser.add_argument("--no-translate", action="store_true",
+                        help="Show non-English titles untranslated (no claude CLI calls)")
     parser.add_argument("--force-refresh", action="store_true",
                         help="Re-fetch CCC members from LFX even if the cache is fresh")
     parser.add_argument("--no-fetch-articles", action="store_true",
@@ -1957,6 +2075,7 @@ def main():
     with open(args.feeds) as f:
         feed_config = yaml.safe_load(f)
     feeds = feed_config.get("feeds", [])
+    language_keywords = feed_config.get("keywords") or {}
     extra_regions = {str(d).lower().lstrip("."): "uk"
                      for d in (feed_config.get("uk_outlets") or [])}
     extra_regions.update({str(d).lower().lstrip("."): str(r).lower()
@@ -2024,6 +2143,8 @@ def main():
         feed_name = feed_def.get("name", feed_def["url"])
         url = feed_def["url"]
         feed_region = (str(feed_def["region"]).lower() if feed_def.get("region") else None)
+        feed_lang = str(feed_def.get("lang") or "en").lower()
+        feed_keywords = keywords_for_language(keywords, language_keywords, feed_lang)
         # A native feed can only yield its own outlet's articles: skip the
         # fetch outright when its region is filtered out. Aggregator feeds
         # (Google News) carry many outlets and are filtered per entry below.
@@ -2088,10 +2209,10 @@ def main():
 
             haystack = f"{title} {summary} {tags}"
 
-            if not keyword_match(haystack, keywords):
+            if not keyword_match(haystack, feed_keywords, feed_lang):
                 if not args.no_fetch_articles and link:
                     full_text = fetch_article_text(link)
-                    if not keyword_match(full_text, keywords):
+                    if not keyword_match(full_text, feed_keywords, feed_lang):
                         continue
                     haystack = f"{haystack} {full_text}"
                 else:
@@ -2104,7 +2225,7 @@ def main():
             if by:
                 categorized["by_member"].append({
                     "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "region": region, "host": host, "member": by,
+                    "publisher": feed_name, "region": region, "host": host, "lang": feed_lang, "member": by,
                 })
                 continue
 
@@ -2112,12 +2233,12 @@ def main():
             if about:
                 categorized["about_member"].append({
                     "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "region": region, "host": host, "member": about,
+                    "publisher": feed_name, "region": region, "host": host, "lang": feed_lang, "member": about,
                 })
             else:
                 categorized["dont"].append({
                     "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "region": region, "host": host,
+                    "publisher": feed_name, "region": region, "host": host, "lang": feed_lang,
                 })
 
         feed_yield.append((feed_name, len(entries), feed_in_window, feed_matched))
@@ -2224,6 +2345,13 @@ def main():
               f"filtering ({', '.join(filter_labels)}){': ' + detail if detail else ''}.",
               file=sys.stderr)
     print(f"Matched {total_matched} Confidential Computing articles.", file=sys.stderr)
+
+    # English titles first, so dedup and clustering compare like with like
+    if not args.no_translate:
+        n = translate_titles([a for bucket in categorized.values() for a in bucket],
+                             args.translations_cache)
+        if n:
+            print(f"Translated {n} titles into English.", file=sys.stderr)
 
     # Deduplicate articles before clustering
     if not args.no_dedup:

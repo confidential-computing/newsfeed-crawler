@@ -65,3 +65,6 @@ newsfeed/
 
 # Saved feed entries (crawler.py --store-only) and its run log
 feed-store/
+
+# English translations of non-English titles (claude CLI), rebuilt on demand
+translations.json
