@@ -1717,10 +1717,14 @@ def main():
 
         if GNews is not None:
             print(f"\nSearching Google News: {args.gnews_query!r}", file=sys.stderr)
+            # Google News truncates results when `before:` is today's date
+            # (26 instead of 99 for the same query), so ask for one extra day.
+            # Entries outside the window are dropped below either way.
+            gn_end = end_dt + timedelta(days=1)
             try:
                 gn = GNews(language='en', country='US',
                            start_date=(start_dt.year, start_dt.month, start_dt.day),
-                           end_date=(end_dt.year, end_dt.month, end_dt.day))
+                           end_date=(gn_end.year, gn_end.month, gn_end.day))
                 gnews_articles = gn.get_news(args.gnews_query)
                 print(f"  {len(gnews_articles)} articles returned", file=sys.stderr)
             except Exception as e:
