@@ -1848,8 +1848,8 @@ def main():
             f.write("post_status: publish\n")
             f.write(f"post_date: {end_dt:%Y-%m-%d %H:%M:%S}\n")
             f.write("taxonomy:\n")
-            f.write("category:\n")
-            f.write("- newsfeed\n")
+            f.write("  category:\n")
+            f.write("    - newsfeed\n")
             f.write("---\n\n")
             f.write(f"**Period:** {start_dt:%Y-%m-%d %H:%M:%S} UTC to "
                     f"{end_dt:%Y-%m-%d %H:%M:%S} UTC\n")
