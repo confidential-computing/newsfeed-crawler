@@ -55,4 +55,18 @@ A `subjects-YYYY-MM-DD.json` file is also written alongside the report; each art
 
 ## Adding feeds
 
-Edit `feeds.yaml` — no code changes needed.
+Edit `feeds.yaml` — no code changes needed. Each feed may set `region:` — where the outlet is based (e.g. `us`, `uk`, `global`, `asia`, `in`, `sg`, `kr`), not what the story is about. Regions are not shown in reports; they are recorded per article in the subjects JSON and used for filtering.
+
+A known outlet domain (built-in `OUTLET_REGIONS` in `crawler.py`, extended by a top-level `outlet_regions:` mapping in `feeds.yaml`) or a country-code TLD (`.com.au`, `.co.kr`, `.in`, …) takes precedence over the feed's `region:`. Google News feeds are tagged per article by the outlet behind each result.
+
+```bash
+# Drop articles from UK and Singapore outlets
+python crawler.py --exclude-region uk --exclude-region sg
+
+# Only Indian and Korean outlets (articles with no known region are dropped)
+python crawler.py --only-region in --only-region kr
+```
+
+`--webfeed-exclude-uk` still works and is equivalent to `--exclude-region uk` in webfeed mode.
+
+At the end of each run a per-feed yield table (entries fetched / in window / matched) is printed to stderr, which is useful when judging whether a new feed earns its place.

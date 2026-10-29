@@ -43,6 +43,38 @@ UK_OUTLET_DOMAINS = (
     "uktech.news", "silicon.co.uk", "computing.co.uk",
 )
 
+# Outlets on generic TLDs whose region cannot be read from the hostname.
+# Region codes are lower-case; UK_OUTLET_DOMAINS above are folded in as "uk".
+# Extend without code changes via a top-level `outlet_regions:` mapping in
+# feeds.yaml (domain: region).
+OUTLET_REGIONS = {
+    **{d: "uk" for d in UK_OUTLET_DOMAINS},
+    # Asia
+    "techwireasia.com": "asia", "itnews.asia": "asia", "opengovasia.com": "asia",
+    "digitimes.com": "tw", "techinasia.com": "asia", "e27.co": "sg",
+    "kr-asia.com": "asia", "asia.nikkei.com": "jp", "scmp.com": "hk",
+    "analyticsindiamag.com": "in", "medianama.com": "in", "inc42.com": "in",
+    "yourstory.com": "in", "cxotoday.com": "in", "thehackernews.com": "in",
+    "thehindubusinessline.com": "in", "indiatimes.com": "in",
+    "koreaherald.com": "kr", "pandaily.com": "cn", "straitstimes.com": "sg",
+    "frontier-enterprise.com": "asia", "cdotrends.com": "asia",
+    "securitybrief.asia": "asia", "itbrief.asia": "asia",
+    "channelnewsasia.com": "sg", "livemint.com": "in", "indianexpress.com": "in",
+    "digitalnewsasia.com": "my", "digiconasia.net": "asia", "thelec.net": "kr",
+    "taipeitimes.com": "tw", "koreatimes.com": "kr",
+}
+
+# Country-code TLDs that identify an outlet's region. Second-level forms such
+# as .com.au and .co.kr are covered because only the last label is checked.
+_CCTLD_REGIONS = {
+    "uk": "uk", "au": "au", "nz": "nz", "in": "in", "sg": "sg", "my": "my",
+    "ph": "ph", "id": "id", "th": "th", "vn": "vn", "hk": "hk", "tw": "tw",
+    "jp": "jp", "kr": "kr", "cn": "cn", "pk": "pk", "bd": "bd", "lk": "lk",
+    "za": "za", "ng": "ng", "ke": "ke", "gh": "gh", "eg": "eg",
+    "br": "br", "ar": "ar", "mx": "mx", "cl": "cl", "co": "co", "pe": "pe",
+    "es": "es", "pt": "pt",
+}
+
 # Hosts that syndicate other publishers' articles: the real publisher must be
 # read from the entry's <source> element rather than from the link.
 _AGGREGATOR_HOSTS = ("news.google.com",)
@@ -65,6 +97,29 @@ def is_uk_host(host, extra_domains=()):
         return True
     return any(host == d or host.endswith("." + d)
                for d in (*UK_OUTLET_DOMAINS, *extra_domains))
+
+
+def region_for_host(host, feed_region=None, extra=None):
+    """
+    Region code of the outlet at `host`: an explicit domain mapping first
+    (`extra`, then OUTLET_REGIONS), then the country-code TLD, then the
+    region declared on the feed. None when nothing is known.
+
+    `.co` is Colombia only as a bare TLD; under another country (`.co.kr`)
+    the last label decides.
+    """
+    host = (host or "").lower().rstrip(".")
+    if host:
+        for mapping in (extra or {}, OUTLET_REGIONS):
+            for d, region in mapping.items():
+                if host == d or host.endswith("." + d):
+                    return region
+        tld = host.rsplit(".", 1)[-1]
+        if tld in _CCTLD_REGIONS and tld != "co":
+            return _CCTLD_REGIONS[tld]
+        if tld == "co" and host.count(".") == 1:
+            return "co"
+    return feed_region or None
 
 
 def publisher_host(link, source_href="", feed_url=""):
@@ -1433,7 +1488,9 @@ def resolve_webfeed_window(args, state_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Crawl RSS feeds for Confidential Computing news (clustering issues fixed)")
-    parser.add_argument("--feeds", default="feeds.yaml", help="Path to feeds.yaml")
+    # Defaults resolve beside this script so cron (which runs from $HOME) finds them.
+    here = os.path.dirname(os.path.abspath(__file__))
+    parser.add_argument("--feeds", default=os.path.join(here, "feeds.yaml"), help="Path to feeds.yaml")
     parser.add_argument("--start", default=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"))
     parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"))
     parser.add_argument("--keywords", default=DEFAULT_KEYWORDS,
@@ -1443,7 +1500,7 @@ def main():
                              "webfeed-YYYY-MM-DD-NN.md in --webfeed mode (NN = 00, 01, ... "
                              "per edition that UTC day) so editions are never confused "
                              "with ordinary reports or with each other")
-    parser.add_argument("--members-cache", default="members.json")
+    parser.add_argument("--members-cache", default=os.path.join(here, "members.json"))
     parser.add_argument("--force-refresh", action="store_true",
                         help="Re-fetch CCC members from LFX even if the cache is fresh")
     parser.add_argument("--no-fetch-articles", action="store_true",
@@ -1498,6 +1555,13 @@ def main():
                              "(any .uk domain, plus The Register, BBC, The Guardian, "
                              "Computer Weekly and others; extend with 'uk_outlets:' in "
                              "feeds.yaml). Native UK feeds are skipped entirely")
+    parser.add_argument("--exclude-region", action="append", default=[], metavar="REGION",
+                        help="Drop articles from outlets in REGION (e.g. uk, sg, in). "
+                             "Repeatable. Regions come from 'region:' on each feed, "
+                             "'outlet_regions:' in feeds.yaml, and country-code TLDs")
+    parser.add_argument("--only-region", action="append", default=[], metavar="REGION",
+                        help="Keep only articles from outlets in REGION. Repeatable. "
+                             "Articles whose region is unknown are dropped")
     parser.add_argument("--webfeed-consolidate-days", type=int, default=90,
                         help="Look-back window in days for a consolidated first webfeed run (default: 90)")
     args = parser.parse_args()
@@ -1521,8 +1585,10 @@ def main():
             # Numbered per day so a second edition never overwrites the first.
             # Chosen before the early exits below, but those write nothing,
             # so they do not use up a number.
+            # Beside the script, like the state file, so cron runs from
+            # $HOME continue the same edition series.
             args.output = next_webfeed_output(
-                "", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+                here, datetime.now(timezone.utc).strftime("%Y-%m-%d"))
         else:
             # Local date, unchanged from previous versions.
             args.output = f"report-{datetime.now().strftime('%Y-%m-%d')}.md"
@@ -1594,13 +1660,33 @@ def main():
     with open(args.feeds) as f:
         feed_config = yaml.safe_load(f)
     feeds = feed_config.get("feeds", [])
-    extra_uk = tuple(str(d).lower().lstrip(".") for d in (feed_config.get("uk_outlets") or []))
+    extra_regions = {str(d).lower().lstrip("."): "uk"
+                     for d in (feed_config.get("uk_outlets") or [])}
+    extra_regions.update({str(d).lower().lstrip("."): str(r).lower()
+                          for d, r in (feed_config.get("outlet_regions") or {}).items()})
     exclude_uk = args.webfeed and args.webfeed_exclude_uk
-    uk_excluded = {}  # host -> count of in-window entries dropped
+    exclude_regions = {r.lower() for r in args.exclude_region}
+    if exclude_uk:
+        exclude_regions.add("uk")
+    only_regions = {r.lower() for r in args.only_region}
+    region_excluded = {}  # host -> count of in-window entries dropped
 
-    def _drop_uk(host):
-        if exclude_uk and is_uk_host(host, extra_uk):
-            uk_excluded[host] = uk_excluded.get(host, 0) + 1
+    # Recorded in the state file and as an HTML comment in ordinary reports.
+    # Excluding only UK keeps the historical "exclude-uk" label.
+    if exclude_regions == {"uk"}:
+        filter_labels = ["exclude-uk"]
+    else:
+        filter_labels = [f"exclude-region={r}" for r in sorted(exclude_regions)]
+    filter_labels += [f"only-region={r}" for r in sorted(only_regions)]
+
+    def _region_dropped(region):
+        if region in exclude_regions:
+            return True
+        return bool(only_regions) and region not in only_regions
+
+    def _drop_region(host, region):
+        if _region_dropped(region):
+            region_excluded[host] = region_excluded.get(host, 0) + 1
             return True
         return False
 
@@ -1630,19 +1716,26 @@ def main():
     total_entries = 0
     total_matched = 0
     feed_health = []
+    feed_yield = []  # (name, entries, in-window, matched) per fetched feed
 
     for feed_def in feeds:
         feed_name = feed_def.get("name", feed_def["url"])
         url = feed_def["url"]
-        # A native UK feed can only yield UK articles: skip the fetch outright.
-        # Aggregator feeds (Google News) are filtered per entry below.
+        feed_region = (str(feed_def["region"]).lower() if feed_def.get("region") else None)
+        # A native feed can only yield its own outlet's articles: skip the
+        # fetch outright when its region is filtered out. Aggregator feeds
+        # (Google News) carry many outlets and are filtered per entry below.
         feed_host = _host(url)
-        if (exclude_uk and feed_host not in _AGGREGATOR_HOSTS
-                and is_uk_host(feed_host, extra_uk)):
-            print(f"Skipping UK outlet feed: {feed_name} (--webfeed-exclude-uk)", file=sys.stderr)
-            uk_excluded.setdefault(feed_host, 0)
-            continue
+        if feed_host not in _AGGREGATOR_HOSTS:
+            native_region = region_for_host(feed_host, feed_region, extra_regions)
+            if _region_dropped(native_region):
+                print(f"Skipping feed: {feed_name} (region {native_region or 'unknown'} "
+                      f"filtered out)", file=sys.stderr)
+                region_excluded.setdefault(feed_host, 0)
+                continue
         print(f"Crawling: {feed_name}", file=sys.stderr)
+        feed_in_window = 0
+        feed_matched = 0
 
         try:
             parsed = fetch_feed(url)
@@ -1666,8 +1759,15 @@ def main():
             title = entry.get("title", "")
             link = entry.get("link", "")
             source_href = (entry.get("source") or {}).get("href", "")
-            if _drop_uk(publisher_host(link, source_href, url)):
+            host = publisher_host(link, source_href, url)
+            # An aggregator's own region says nothing about the outlet behind
+            # an entry, so only native feeds lend theirs as a fallback.
+            region = region_for_host(
+                host, None if feed_host in _AGGREGATOR_HOSTS else feed_region,
+                extra_regions)
+            if _drop_region(host, region):
                 continue
+            feed_in_window += 1
             summary = entry.get("summary", "")
             tags = " ".join(t.get("term", "") for t in entry.get("tags", []))
             author = entry.get("author", "")
@@ -1685,12 +1785,13 @@ def main():
                     continue
 
             total_matched += 1
+            feed_matched += 1
 
             by = is_by_member(feed_name, author, members)
             if by:
                 categorized["by_member"].append({
                     "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "member": by,
+                    "publisher": feed_name, "region": region, "member": by,
                 })
                 continue
 
@@ -1698,13 +1799,15 @@ def main():
             if about:
                 categorized["about_member"].append({
                     "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "member": about,
+                    "publisher": feed_name, "region": region, "member": about,
                 })
             else:
                 categorized["dont"].append({
                     "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name,
+                    "publisher": feed_name, "region": region,
                 })
+
+        feed_yield.append((feed_name, len(parsed.entries), feed_in_window, feed_matched))
 
     # Google News search
     if not args.no_gnews and args.gnews_query:
@@ -1744,7 +1847,9 @@ def main():
 
                 if normalize_url(url) in seen_urls:
                     continue
-                if _drop_uk(publisher_host(url, (article.get("publisher") or {}).get("href", ""))):
+                host = publisher_host(url, (article.get("publisher") or {}).get("href", ""))
+                region = region_for_host(host, None, extra_regions)
+                if _drop_region(host, region):
                     continue
 
                 pub = None
@@ -1777,7 +1882,7 @@ def main():
                 if by:
                     categorized["by_member"].append({
                         "title": title, "url": url, "published": pub_fmt,
-                        "publisher": publisher, "member": by,
+                        "publisher": publisher, "region": region, "member": by,
                     })
                     continue
 
@@ -1785,25 +1890,25 @@ def main():
                 if about:
                     categorized["about_member"].append({
                         "title": title, "url": url, "published": pub_fmt,
-                        "publisher": publisher, "member": about,
+                        "publisher": publisher, "region": region, "member": about,
                     })
                 else:
                     categorized["dont"].append({
                         "title": title, "url": url, "published": pub_fmt,
-                        "publisher": publisher,
+                        "publisher": publisher, "region": region,
                     })
 
             print(f"  Matched {gnews_matched} from Google News.", file=sys.stderr)
 
     print(f"\nScanned {total_entries} entries total.", file=sys.stderr)
-    if exclude_uk:
-        # Counted before keyword filtering, so this is how much UK material was
-        # in the window, not how many CC articles were lost.
-        dropped = sum(uk_excluded.values())
-        detail = ", ".join(f"{h} {n}" if n else f"{h} (feed skipped)"
-                           for h, n in sorted(uk_excluded.items(), key=lambda kv: (-kv[1], kv[0])))
-        print(f"Excluded {dropped} in-window entries from UK outlets before keyword "
-              f"filtering (--webfeed-exclude-uk){': ' + detail if detail else ''}.",
+    if exclude_regions or only_regions:
+        # Counted before keyword filtering, so this is how much material from
+        # filtered regions was in the window, not how many CC articles were lost.
+        dropped = sum(region_excluded.values())
+        detail = ", ".join(f"{h or '(unknown host)'} {n}" if n else f"{h} (feed skipped)"
+                           for h, n in sorted(region_excluded.items(), key=lambda kv: (-kv[1], kv[0])))
+        print(f"Excluded {dropped} in-window entries by region before keyword "
+              f"filtering ({', '.join(filter_labels)}){': ' + detail if detail else ''}.",
               file=sys.stderr)
     print(f"Matched {total_matched} Confidential Computing articles.", file=sys.stderr)
 
@@ -1863,10 +1968,10 @@ def main():
             f.write(f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
             f.write(f"**Keywords:** {args.keywords}\n")
             f.write(f"**Total matched:** {total_matched}\n\n")
-        if not args.webfeed and exclude_uk:
+        if not args.webfeed and filter_labels:
             # Invisible, like the other webfeed tags, but lets a consumer tell
-            # a filtered edition from an unfiltered one.
-            f.write("<!-- cc-news filter=exclude-uk -->\n\n")
+            # a filtered report from an unfiltered one.
+            f.write(f"<!-- cc-news filter={','.join(filter_labels)} -->\n\n")
 
         no_cluster = args.no_cluster
         webfeed = args.webfeed
@@ -1946,11 +2051,17 @@ def main():
         save_webfeed_state(webfeed_state_path, args.start, args.end,
                            args.output, total_matched, args.webfeed_time,
                            webfeed_end_cutoff,
-                           filters=["exclude-uk"] if exclude_uk else [])
+                           filters=filter_labels)
         print(f"Recorded webfeed run state in {webfeed_state_path}", file=sys.stderr)
     elif args.webfeed and args.webfeed_adhoc:
         # A one-off backfill must not rewind the weekly resume point.
         print("Ad-hoc window: webfeed run state left unchanged.", file=sys.stderr)
+
+    if feed_yield:
+        print("\nFeed yield (entries fetched / in window / matched):", file=sys.stderr)
+        width = max(len(n) for n, *_ in feed_yield)
+        for name, entries, in_window, matched in feed_yield:
+            print(f"  {name:<{width}}  {entries:4d} {in_window:4d} {matched:4d}", file=sys.stderr)
 
     if feed_health:
         print("\nFeed health warnings:", file=sys.stderr)

@@ -1,55 +1,200 @@
+# Each feed may carry:
+#   region: where the outlet is based, not what the story is about
+#           (lower-case code: us, uk, global, asia, in, sg, kr, jp, tw, hk,
+#           cn, my, ...). Not shown in reports; recorded in the subjects JSON
+#           and used by --exclude-region and --only-region. A domain in an
+#           optional top-level `outlet_regions:` mapping (domain: region),
+#           crawler.py's OUTLET_REGIONS, or a country-code TLD takes
+#           precedence. For Google News feeds the region is taken per article
+#           from the publishing outlet instead.
 feeds:
   - name: The Register - Security
     url: https://www.theregister.com/security/headlines.atom
+    region: uk
   - name: The Register - Cloud
     url: https://www.theregister.com/off_prem/headlines.atom
+    region: uk
   - name: InfoQ - Cloud
     url: https://feed.infoq.com/cloud/
+    region: global
   - name: Ars Technica
     url: https://feeds.arstechnica.com/arstechnica/index
+    region: us
   - name: VentureBeat (via Google News)
     url: https://news.google.com/rss/search?q=site:venturebeat.com&hl=en&gl=US&ceid=US:en
+    region: global
   - name: ServeTheHome
     url: https://www.servethehome.com/feed/
+    region: us
   - name: NVIDIA Blog
     url: https://blogs.nvidia.com/feed/
+    region: us
   - name: Microsoft Security Blog
     url: https://www.microsoft.com/en-us/security/blog/feed/
+    region: us
   - name: Google Cloud Blog - Security
     url: https://cloudblog.withgoogle.com/products/identity-security/rss/
+    region: us
   - name: IBM Research Blog
     url: https://research.ibm.com/rss
+    region: us
   - name: Intel (via Google News)
     url: https://news.google.com/rss/search?q=Intel+(%22confidential+computing%22+OR+TDX+OR+SGX+OR+enclave+OR+attestation)&hl=en&gl=US&ceid=US:en
+    region: global
   - name: BBC Technology
     url: https://feeds.bbci.co.uk/news/technology/rss.xml
+    region: uk
   - name: TechCrunch
     url: https://techcrunch.com/feed/
+    region: us
   - name: ZDNet Security
     url: https://www.zdnet.com/topic/security/rss.xml
+    region: us
   - name: Google News CC
     url: https://news.google.com/rss/search?q=confidential+computing&hl=en&gl=US&ceid=US:en
+    region: global
   - name: The New Stack
     url: https://thenewstack.io/feed/
+    region: us
   - name: MIT Technology Review
     url: https://www.technologyreview.com/feed/
+    region: us
   - name: InformationWeek
     url: https://www.informationweek.com/rss.xml
+    region: us
   - name: Dark Reading Security
     url: https://www.darkreading.com/rss.xml
+    region: us
   - name: LWN.net
     url: https://lwn.net/headlines/newrss
+    region: us
   - name: Phoronix
     url: https://www.phoronix.com/rss.php
+    region: us
   - name: Linux Magazine
     url: https://www.linux-magazine.com/rss/feed/lmi_news
+    region: global
   - name: SD Times
     url: https://sdtimes.com/feed/
+    region: us
   - name: Linux Foundation Blog
     url: https://www.linuxfoundation.org/blog/rss.xml
+    region: global
   - name: Ubuntu Blog
     url: https://ubuntu.com/blog/feed
+    region: global
   - name: Red Hat Blog
     url: https://www.redhat.com/en/rss/blog
+    region: us
   - name: SUSE Blog
     url: https://www.suse.com/api/blogs?Language=en
+    region: global
+
+  # --- Asia (English) ---
+  - name: iTnews Asia
+    url: https://www.itnews.asia/RSS/rss.ashx
+    region: asia
+  - name: Tech in Asia
+    url: https://www.techinasia.com/feed
+    region: asia
+  - name: e27
+    url: https://e27.co/feed/
+    region: sg
+  - name: Frontier Enterprise
+    url: https://www.frontier-enterprise.com/feed/
+    region: asia
+  - name: CDOTrends
+    url: https://www.cdotrends.com/rss.xml
+    region: asia
+  - name: SecurityBrief Asia
+    url: https://securitybrief.asia/feed
+    region: asia
+  - name: IT Brief Asia
+    url: https://itbrief.asia/feed
+    region: asia
+  - name: DigiconAsia
+    url: https://digiconasia.net/feed
+    region: asia
+  - name: Business Times Singapore - Technology
+    url: https://www.businesstimes.com.sg/rss/technology
+    region: sg
+  - name: CNA Business
+    url: https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6936
+    region: sg
+  - name: Digital News Asia
+    url: https://www.digitalnewsasia.com/rss.xml
+    region: my
+  - name: DigiTimes Asia
+    url: https://www.digitimes.com/rss/daily.xml
+    region: tw
+  - name: Taipei Times
+    url: https://www.taipeitimes.com/xml/index.rss
+    region: tw
+  - name: SCMP Tech
+    url: https://www.scmp.com/rss/36/feed
+    region: hk
+  - name: Pandaily
+    url: https://pandaily.com/feed/
+    region: cn
+  - name: Japan Times
+    url: https://www.japantimes.co.jp/feed/
+    region: jp
+  - name: Korea Herald
+    url: https://www.koreaherald.com/rss/newsAll
+    region: kr
+  - name: Korea Times
+    url: https://www.koreatimes.co.kr/www/rss/rss.xml
+    region: kr
+  - name: BusinessKorea
+    url: https://www.businesskorea.co.kr/rss/allArticle.xml
+    region: kr
+  - name: The Elec
+    url: https://www.thelec.net/rss/allArticle.xml
+    region: kr
+  - name: Yonhap News (English)
+    url: https://en.yna.co.kr/RSS/news.xml
+    region: kr
+  - name: ETCIO
+    url: https://cio.economictimes.indiatimes.com/rss/topstories
+    region: in
+  - name: ETCISO
+    url: https://ciso.economictimes.indiatimes.com/rss/topstories
+    region: in
+  - name: Analytics India Magazine
+    url: https://analyticsindiamag.com/feed/
+    region: in
+  - name: MediaNama
+    url: https://www.medianama.com/feed/
+    region: in
+  - name: Inc42
+    url: https://inc42.com/feed/
+    region: in
+  - name: YourStory
+    url: https://yourstory.com/feed
+    region: in
+  - name: Express Computer
+    url: https://www.expresscomputer.in/feed/
+    region: in
+  - name: The Hacker News
+    url: https://feeds.feedburner.com/TheHackersNews
+    region: in
+  - name: Hindu BusinessLine - Info-tech
+    url: https://www.thehindubusinessline.com/info-tech/feeder/default.rss
+    region: in
+  - name: Times of India - Tech
+    url: https://timesofindia.indiatimes.com/rssfeeds/66949542.cms
+    region: in
+  - name: Indian Express - Technology
+    url: https://indianexpress.com/section/technology/feed/
+    region: in
+  - name: Mint - Technology
+    url: https://www.livemint.com/rss/technology
+    region: in
+  - name: Google News CC - India
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en-IN&gl=IN&ceid=IN:en
+  - name: Google News CC - Singapore
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en-SG&gl=SG&ceid=SG:en
+  - name: Google News CC - Malaysia
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en-MY&gl=MY&ceid=MY:en
+  - name: Google News CC - Philippines
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en-PH&gl=PH&ceid=PH:en
