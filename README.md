@@ -57,6 +57,8 @@ A `subjects-YYYY-MM-DD.json` file is also written alongside the report; each art
 
 Edit `feeds.yaml` — no code changes needed. Each feed may set `region:` — where the outlet is based (e.g. `us`, `uk`, `global`, `asia`, `in`, `sg`, `kr`), not what the story is about. Regions are not shown in reports; they are recorded per article in the subjects JSON and used for filtering.
 
+A feed whose dates have no time zone (e.g. `2026-10-29 21:48:48`) is read as UTC unless it sets `timezone:` to an IANA zone such as `Asia/Seoul`; dates that state a zone are left alone.
+
 A known outlet domain (built-in `OUTLET_REGIONS` in `crawler.py`, extended by a top-level `outlet_regions:` mapping in `feeds.yaml`) or a country-code TLD (`.com.au`, `.co.kr`, `.in`, …) takes precedence over the feed's `region:`. Google News feeds are tagged per article by the outlet behind each result.
 
 ```bash

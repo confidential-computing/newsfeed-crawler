@@ -13,7 +13,7 @@ import feedparser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from crawler import EntryStore, entry_datetime, merge_stored_entries
+from crawler import EntryStore, entry_datetime, localise_naive_dates, merge_stored_entries
 
 FEED = "https://example.com/feed"
 NOW = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
@@ -89,6 +89,33 @@ class TestEntryStore(unittest.TestCase):
         store.prune(NOW)
         self.assertEqual([e["link"] for e in EntryStore(self.dir).load().entries_for(FEED)],
                          ["https://x/new"])
+
+
+class TestFeedTimezone(unittest.TestCase):
+
+    def parse(self, date_tag):
+        xml = ('<rss xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><item>'
+               f"<title>t</title>{date_tag}</item></channel></rss>")
+        return feedparser.parse(xml).entries
+
+    def test_zoneless_korean_time_becomes_utc(self):
+        entries = self.parse("<pubDate>2026-10-29 21:48:48</pubDate>")
+        localise_naive_dates(entries, "Asia/Seoul")
+        self.assertEqual(entry_datetime(entries[0]),
+                         datetime(2026, 10, 29, 12, 48, 48, tzinfo=timezone.utc))
+
+    def test_dates_with_a_zone_are_left_alone(self):
+        for tag, expected in [
+            ("<pubDate>Thu, 29 Oct 2026 13:57:02 GMT</pubDate>",
+             datetime(2026, 10, 29, 13, 57, 2, tzinfo=timezone.utc)),
+            ("<pubDate>Thu, 29 Oct 2026 22:57:02 +0900</pubDate>",
+             datetime(2026, 10, 29, 13, 57, 2, tzinfo=timezone.utc)),
+            ("<dc:date>2026-10-29T08:00:00+08:00</dc:date>",
+             datetime(2026, 10, 29, 0, 0, tzinfo=timezone.utc)),
+        ]:
+            entries = self.parse(tag)
+            localise_naive_dates(entries, "Asia/Seoul")
+            self.assertEqual(entry_datetime(entries[0]), expected, tag)
 
 
 if __name__ == "__main__":

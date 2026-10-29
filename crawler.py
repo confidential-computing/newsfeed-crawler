@@ -421,6 +421,32 @@ def is_about_member(haystack, members):
     return None
 
 
+# A date string that ends in a zone: "Z", "+09:00", "+0900", "GMT", "KST".
+_HAS_ZONE_RE = re.compile(r"(?:Z|[+-]\d{2}:?\d{2}|[A-Za-z]{2,5})\s*$")
+
+
+def localise_naive_dates(entries, tzname):
+    """
+    Read zone-less entry dates as local time in *tzname*, not UTC.
+
+    BusinessKorea and The Elec write "2026-10-29 21:48:48" in Korean time.
+    feedparser takes that as UTC, which puts their newest items up to nine
+    hours in the future, past the end of the edition window.
+    """
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(tzname)
+    for entry in entries:
+        # entry_datetime() prefers published over updated, so fix that one.
+        for raw_key, parsed_key in (("published", "published_parsed"),
+                                    ("updated", "updated_parsed")):
+            raw, parsed = entry.get(raw_key), entry.get(parsed_key)
+            if raw and parsed:
+                if not _HAS_ZONE_RE.search(raw):
+                    local = datetime(*parsed[:6], tzinfo=tz)
+                    entry[parsed_key] = local.astimezone(timezone.utc).utctimetuple()
+                break
+
+
 def entry_datetime(entry):
     for attr in ("published_parsed", "updated_parsed"):
         t = getattr(entry, attr, None)
@@ -693,6 +719,8 @@ def store_only(args, now):
             parsed = fetch_feed(feed_def["url"])
             if parsed.bozo and not parsed.entries:
                 raise ValueError(parsed.bozo_exception)
+            if feed_def.get("timezone"):
+                localise_naive_dates(parsed.entries, feed_def["timezone"])
         except Exception as e:
             failed += 1
             print(f"  {name:<40} failed: {str(e)[:60]}", file=sys.stderr)
@@ -1997,6 +2025,8 @@ def main():
             if not parsed.entries:
                 print(f"  [warn] {feed_name}: feed parsed but returned 0 entries", file=sys.stderr)
                 feed_health.append((feed_name, "0 entries"))
+            if feed_def.get("timezone"):
+                localise_naive_dates(parsed.entries, feed_def["timezone"])
             live = parsed.entries
         except Exception as e:
             # Entries stored before the failure are still worth reporting.

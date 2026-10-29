@@ -7,6 +7,9 @@
 #           crawler.py's OUTLET_REGIONS, or a country-code TLD takes
 #           precedence. For Google News feeds the region is taken per article
 #           from the publishing outlet instead.
+#   timezone: IANA zone (e.g. Asia/Seoul) for feeds whose dates carry no
+#           zone of their own. Without it such dates are read as UTC.
+#           Dates that do state a zone are left alone.
 feeds:
   - name: The Register - Security
     url: https://www.theregister.com/security/headlines.atom
@@ -14,8 +17,9 @@ feeds:
   - name: The Register - Cloud
     url: https://www.theregister.com/off_prem/headlines.atom
     region: uk
-  - name: InfoQ - Cloud
-    url: https://feed.infoq.com/cloud/
+  # The /cloud/ feed stopped updating in May 2022; the main feed is current.
+  - name: InfoQ
+    url: https://feed.infoq.com/
     region: global
   - name: Ars Technica
     url: https://feeds.arstechnica.com/arstechnica/index
@@ -129,8 +133,10 @@ feeds:
   - name: Digital News Asia
     url: https://www.digitalnewsasia.com/rss.xml
     region: my
-  - name: DigiTimes Asia
-    url: https://www.digitimes.com/rss/daily.xml
+  # DigiTimes' own feed is blocked (CloudFront 403), so read it through
+  # Google News. when:7d keeps the 100-item cap on this week's stories.
+  - name: DigiTimes Asia (via Google News)
+    url: https://news.google.com/rss/search?q=site:digitimes.com+when:7d&hl=en-US&gl=US&ceid=US:en
     region: tw
   - name: Taipei Times
     url: https://www.taipeitimes.com/xml/index.rss
@@ -150,12 +156,15 @@ feeds:
   - name: Korea Times
     url: https://www.koreatimes.co.kr/www/rss/rss.xml
     region: kr
+  # These two give Korean local times with no zone ("2026-10-29 21:48:48").
   - name: BusinessKorea
     url: https://www.businesskorea.co.kr/rss/allArticle.xml
     region: kr
+    timezone: Asia/Seoul
   - name: The Elec
     url: https://www.thelec.net/rss/allArticle.xml
     region: kr
+    timezone: Asia/Seoul
   - name: Yonhap News (English)
     url: https://en.yna.co.kr/RSS/news.xml
     region: kr
@@ -186,8 +195,11 @@ feeds:
   - name: Hindu BusinessLine - Info-tech
     url: https://www.thehindubusinessline.com/info-tech/feeder/default.rss
     region: in
-  - name: Times of India - Tech
-    url: https://timesofindia.indiatimes.com/rssfeeds/66949542.cms
+  # Times of India's own tech feeds stopped updating (newest items 2024,
+  # some 2016), so search its site for CC terms instead. Bare 'enclave' and
+  # 'TEE' are left out: on this site they mostly find property stories.
+  - name: Times of India (via Google News)
+    url: https://news.google.com/rss/search?q=site:timesofindia.indiatimes.com+(%22confidential+computing%22+OR+%22confidential+AI%22+OR+%22trusted+execution+environment%22+OR+%22Intel+TDX%22+OR+%22Intel+SGX%22+OR+%22AMD+SEV%22+OR+%22secure+enclave%22)&hl=en-IN&gl=IN&ceid=IN:en
     region: in
   - name: Indian Express - Technology
     url: https://indianexpress.com/section/technology/feed/
