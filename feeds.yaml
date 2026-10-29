@@ -53,6 +53,11 @@ feeds:
   - name: Google News CC
     url: https://news.google.com/rss/search?q=confidential+computing&hl=en&gl=US&ceid=US:en
     region: global
+  # Related terms, kept separate so they cannot crowd "confidential computing"
+  # results out of Google's ~100-item cap.
+  - name: Google News CC - related terms
+    url: https://news.google.com/rss/search?q=%22confidential+computing%22+OR+%22trusted+execution+environment%22+OR+%22confidential+AI%22+OR+%22remote+attestation%22+OR+%22secure+enclave%22&hl=en&gl=US&ceid=US:en
+    region: global
   - name: The New Stack
     url: https://thenewstack.io/feed/
     region: us
