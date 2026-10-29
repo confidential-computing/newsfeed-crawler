@@ -267,3 +267,55 @@ feeds:
     url: https://news.google.com/rss/search?q=confidential+computing&hl=en-AU&gl=AU&ceid=AU:en
   - name: Google News CC - New Zealand
     url: https://news.google.com/rss/search?q=confidential+computing&hl=en-NZ&gl=NZ&ceid=NZ:en
+
+  # --- Africa ---
+  - name: TechCabal
+    url: https://techcabal.com/feed/
+    region: ng
+  - name: ITWeb
+    url: https://www.itweb.co.za/rss
+    region: za
+  - name: TechCentral
+    url: https://techcentral.co.za/feed/
+    region: za
+  - name: Ventureburn
+    url: https://ventureburn.com/feed/
+    region: za
+  - name: BusinessDay NG - Technology
+    url: https://businessday.ng/category/technology/feed/
+    region: ng
+  - name: TechTrendsKE
+    url: https://techtrendske.co.ke/feed/
+    region: ke
+  - name: CIO Africa
+    url: https://cioafrica.co/feed/
+    region: africa
+  - name: Connecting Africa
+    url: https://www.connectingafrica.com/rss.xml
+    region: africa
+  - name: Techzim
+    url: https://www.techzim.co.zw/feed/
+    region: zw
+  - name: Tech Labari
+    url: https://techlabari.com/feed/
+    region: gh
+  # These outlets' own feeds are blocked (403) or gone, so read them through
+  # Google News site searches.
+  - name: MyBroadband (via Google News)
+    url: https://news.google.com/rss/search?q=site:mybroadband.co.za+when:7d&hl=en-ZA&gl=ZA&ceid=ZA:en
+    region: za
+  - name: Techpoint Africa (via Google News)
+    url: https://news.google.com/rss/search?q=site:techpoint.africa+when:7d&hl=en-NG&gl=NG&ceid=NG:en
+    region: ng
+  - name: TechEconomy (via Google News)
+    url: https://news.google.com/rss/search?q=site:techeconomy.ng+when:7d&hl=en-NG&gl=NG&ceid=NG:en
+    region: ng
+  - name: Techweez (via Google News)
+    url: https://news.google.com/rss/search?q=site:techweez.com+when:7d&hl=en-KE&gl=KE&ceid=KE:en
+    region: ke
+  - name: Google News CC - South Africa
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en-ZA&gl=ZA&ceid=ZA:en
+  - name: Google News CC - Nigeria
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en-NG&gl=NG&ceid=NG:en
+  - name: Google News CC - Kenya
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en-KE&gl=KE&ceid=KE:en

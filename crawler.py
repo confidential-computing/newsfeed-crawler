@@ -66,6 +66,10 @@ OUTLET_REGIONS = {
     "taipeitimes.com": "tw", "koreatimes.com": "kr",
     # Australia and New Zealand
     "itwire.com": "au", "innovationaus.com": "au", "capitalbrief.com": "au",
+    # Africa ("cioafrica.co" would otherwise read as Colombia)
+    "techcabal.com": "ng", "techpoint.africa": "ng", "ventureburn.com": "za",
+    "techweez.com": "ke", "techlabari.com": "gh", "cioafrica.co": "africa",
+    "connectingafrica.com": "africa",
 }
 
 # Country-code TLDs that identify an outlet's region. Second-level forms such
@@ -74,7 +78,9 @@ _CCTLD_REGIONS = {
     "uk": "uk", "au": "au", "nz": "nz", "in": "in", "sg": "sg", "my": "my",
     "ph": "ph", "id": "id", "th": "th", "vn": "vn", "hk": "hk", "tw": "tw",
     "jp": "jp", "kr": "kr", "cn": "cn", "pk": "pk", "bd": "bd", "lk": "lk",
-    "za": "za", "ng": "ng", "ke": "ke", "gh": "gh", "eg": "eg",
+    "za": "za", "ng": "ng", "ke": "ke", "gh": "gh", "eg": "eg", "zw": "zw",
+    "ug": "ug", "tz": "tz", "rw": "rw", "et": "et", "zm": "zm", "bw": "bw",
+    "na": "na", "mu": "mu", "ma": "ma", "tn": "tn", "sn": "sn", "cm": "cm",
     "br": "br", "ar": "ar", "mx": "mx", "cl": "cl", "co": "co", "pe": "pe",
     "es": "es", "pt": "pt",
 }
