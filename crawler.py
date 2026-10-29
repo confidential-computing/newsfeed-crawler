@@ -527,6 +527,158 @@ def fetch_feed(url, attempts=2):
     return parsed
 
 
+# Busy feeds (Yonhap, Korea Herald, Taipei Times) only list about a day of
+# items, so a weekly run sees a fraction of their week. `--store-only` runs
+# several times a day and saves every entry here; every crawl then merges
+# the stored entries for each feed with what the feed shows live.
+ENTRY_STORE_KEEP_DAYS = 35
+
+
+def _entry_key(entry):
+    return entry.get("link") or entry.get("title") or ""
+
+
+def _entry_record(feed_url, entry, seen):
+    pub = entry_datetime(entry)
+    return {
+        "feed": feed_url,
+        "seen": seen.isoformat(),
+        "published": pub.isoformat() if pub else None,
+        "title": entry.get("title", ""),
+        "link": entry.get("link", ""),
+        "summary": entry.get("summary", ""),
+        "author": entry.get("author", ""),
+        "tags": [t.get("term", "") for t in entry.get("tags", [])],
+        "source_href": (entry.get("source") or {}).get("href", ""),
+    }
+
+
+def _record_entry(rec):
+    """Rebuild a feedparser-like entry from a stored record."""
+    entry = feedparser.FeedParserDict(
+        title=rec["title"], link=rec["link"], summary=rec["summary"],
+        author=rec["author"],
+        tags=[feedparser.FeedParserDict(term=t) for t in rec["tags"]])
+    if rec["source_href"]:
+        entry["source"] = feedparser.FeedParserDict(href=rec["source_href"])
+    if rec["published"]:
+        entry["published_parsed"] = datetime.fromisoformat(rec["published"]).utctimetuple()
+    return entry
+
+
+class EntryStore:
+    """
+    Feed entries saved between runs: one JSON-lines file per UTC day of
+    first sighting, holding each (feed, link) once. Files older than
+    *keep_days* are deleted.
+    """
+
+    def __init__(self, directory, keep_days=ENTRY_STORE_KEEP_DAYS):
+        self.directory = directory
+        self.keep_days = keep_days
+        self.by_feed = {}  # feed url -> {entry key: record}
+        os.makedirs(directory, exist_ok=True)
+
+    def _files(self):
+        for name in sorted(os.listdir(self.directory)):
+            m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})\.jsonl", name)
+            if m:
+                yield m.group(1), os.path.join(self.directory, name)
+
+    def _lock(self):
+        import fcntl
+        f = open(os.path.join(self.directory, ".lock"), "w")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        return f
+
+    def load(self):
+        with self._lock():
+            for _, path in self._files():
+                with open(path) as f:
+                    for line in f:
+                        try:
+                            rec = json.loads(line)
+                        except ValueError:
+                            continue  # a line cut short by a crash
+                        self.by_feed.setdefault(rec["feed"], {}).setdefault(_entry_key(rec), rec)
+        return self
+
+    def entries_for(self, feed_url):
+        return list(self.by_feed.get(feed_url, {}).values())
+
+    def add(self, feed_url, entries, now):
+        """Save the entries not stored yet; return how many were new."""
+        known = self.by_feed.setdefault(feed_url, {})
+        new = []
+        for entry in entries:
+            key = _entry_key(entry)
+            if key and key not in known:
+                known[key] = rec = _entry_record(feed_url, entry, now)
+                new.append(rec)
+        if new:
+            with self._lock(), open(os.path.join(
+                    self.directory, f"{now:%Y-%m-%d}.jsonl"), "a") as f:
+                for rec in new:
+                    f.write(json.dumps(rec) + "\n")
+        return len(new)
+
+    def prune(self, now):
+        oldest = (now - timedelta(days=self.keep_days)).strftime("%Y-%m-%d")
+        with self._lock():
+            for day, path in self._files():
+                if day < oldest:
+                    os.remove(path)
+
+
+def merge_stored_entries(live, stored, start_dt):
+    """
+    Live entries plus the stored ones the feed no longer shows. An undated
+    stored entry is kept only if first seen in the window: the window check
+    can't place it, and it would otherwise reappear in every edition.
+    """
+    live_keys = {_entry_key(e) for e in live}
+    merged = list(live)
+    for rec in stored:
+        if _entry_key(rec) in live_keys:
+            continue
+        if not rec["published"] and datetime.fromisoformat(rec["seen"]) < start_dt:
+            continue
+        merged.append(_record_entry(rec))
+    return merged
+
+
+def store_only(args, now):
+    """Fetch every feed and save new entries; no matching or report."""
+    with open(args.feeds) as f:
+        feeds = yaml.safe_load(f).get("feeds", [])
+    store = EntryStore(args.entry_store, args.entry_store_days).load()
+    socket.setdefaulttimeout(60)
+    failed = 0
+    print(f"[store] {now:%Y-%m-%d %H:%M:%S} UTC: fetching {len(feeds)} feeds "
+          f"into {args.entry_store}", file=sys.stderr)
+    print(f"  {'Feed':<40} {'entries':>7} {'new':>5}  oldest entry", file=sys.stderr)
+    for feed_def in feeds:
+        name = feed_def.get("name", feed_def["url"])
+        try:
+            parsed = fetch_feed(feed_def["url"])
+            if parsed.bozo and not parsed.entries:
+                raise ValueError(parsed.bozo_exception)
+        except Exception as e:
+            failed += 1
+            print(f"  {name:<40} failed: {str(e)[:60]}", file=sys.stderr)
+            continue
+        new = store.add(feed_def["url"], parsed.entries, now)
+        dates = [d for d in map(entry_datetime, parsed.entries) if d]
+        # How far back the feed reaches tells us whether runs are frequent
+        # enough: a feed whose oldest entry is newer than the last run has
+        # dropped items we never saw.
+        span = f"{(now - min(dates)).total_seconds() / 3600:.0f}h ago" if dates else "-"
+        print(f"  {name:<40} {len(parsed.entries):>7} {new:>5}  {span}", file=sys.stderr)
+    store.prune(now)
+    print(f"[store] Done: {len(feeds) - failed} feeds fetched, {failed} failed.", file=sys.stderr)
+    return 1 if failed == len(feeds) else 0
+
+
 # Page furniture that carries *other* stories' headlines: navigation, sidebars,
 # "related"/"trending"/"most read" blocks, newsletter promos, footers. Text from
 # these is not part of the article and must not be matched against keywords, or
@@ -1608,7 +1760,23 @@ def main():
                              "Articles whose region is unknown are dropped")
     parser.add_argument("--webfeed-consolidate-days", type=int, default=90,
                         help="Look-back window in days for a consolidated first webfeed run (default: 90)")
+    parser.add_argument("--entry-store", default=os.path.join(here, "feed-store"), metavar="DIR",
+                        help="Directory of saved feed entries, merged into every crawl so feeds "
+                             "that only list a day of items still cover the whole window "
+                             "(default: feed-store beside this script)")
+    parser.add_argument("--entry-store-days", type=int, default=ENTRY_STORE_KEEP_DAYS,
+                        help=f"Days of saved entries to keep (default: {ENTRY_STORE_KEEP_DAYS})")
+    parser.add_argument("--no-entry-store", action="store_true",
+                        help="Neither read nor save stored feed entries")
+    parser.add_argument("--store-only", action="store_true",
+                        help="Fetch every feed and save new entries to the entry store, then "
+                             "exit. Run this from cron several times a day")
     args = parser.parse_args()
+
+    if args.store_only:
+        if args.no_entry_store:
+            parser.error("--store-only and --no-entry-store contradict each other")
+        sys.exit(store_only(args, datetime.now(timezone.utc).replace(microsecond=0)))
 
     if args.webfeed_exclude_uk and not args.webfeed:
         parser.error("--webfeed-exclude-uk requires --webfeed")
@@ -1761,6 +1929,9 @@ def main():
     total_matched = 0
     feed_health = []
     feed_yield = []  # (name, entries, in-window, matched) per fetched feed
+    store = None if args.no_entry_store else EntryStore(
+        args.entry_store, args.entry_store_days).load()
+    crawl_time = datetime.now(timezone.utc).replace(microsecond=0)
 
     for feed_def in feeds:
         feed_name = feed_def.get("name", feed_def["url"])
@@ -1781,6 +1952,7 @@ def main():
         feed_in_window = 0
         feed_matched = 0
 
+        stored = store.entries_for(url) if store else []
         try:
             parsed = fetch_feed(url)
             if parsed.bozo and not parsed.entries:
@@ -1788,12 +1960,20 @@ def main():
             if not parsed.entries:
                 print(f"  [warn] {feed_name}: feed parsed but returned 0 entries", file=sys.stderr)
                 feed_health.append((feed_name, "0 entries"))
+            live = parsed.entries
         except Exception as e:
-            print(f"  [skip] {feed_name}: {e}", file=sys.stderr)
+            # Entries stored before the failure are still worth reporting.
+            print(f"  [skip] {feed_name}: {e}" + (
+                f"; using {len(stored)} stored entries" if stored else ""), file=sys.stderr)
             feed_health.append((feed_name, f"failed: {str(e)[:60]}"))
-            continue
+            if not stored:
+                continue
+            live = []
+        if store:
+            store.add(url, live, crawl_time)
+        entries = merge_stored_entries(live, stored, start_dt)
 
-        for entry in parsed.entries:
+        for entry in entries:
             total_entries += 1
 
             pub = entry_datetime(entry)
@@ -1851,7 +2031,7 @@ def main():
                     "publisher": feed_name, "region": region,
                 })
 
-        feed_yield.append((feed_name, len(parsed.entries), feed_in_window, feed_matched))
+        feed_yield.append((feed_name, len(entries), feed_in_window, feed_matched))
 
     # Google News search
     if not args.no_gnews and args.gnews_query:
@@ -2102,7 +2282,7 @@ def main():
         print("Ad-hoc window: webfeed run state left unchanged.", file=sys.stderr)
 
     if feed_yield:
-        print("\nFeed yield (entries fetched / in window / matched):", file=sys.stderr)
+        print("\nFeed yield (entries live+stored / in window / matched):", file=sys.stderr)
         width = max(len(n) for n, *_ in feed_yield)
         for name, entries, in_window, matched in feed_yield:
             print(f"  {name:<{width}}  {entries:4d} {in_window:4d} {matched:4d}", file=sys.stderr)

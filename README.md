@@ -69,4 +69,18 @@ python crawler.py --only-region in --only-region kr
 
 `--webfeed-exclude-uk` still works and is equivalent to `--exclude-region uk` in webfeed mode.
 
-At the end of each run a per-feed yield table (entries fetched / in window / matched) is printed to stderr, which is useful when judging whether a new feed earns its place.
+## Stored feed entries
+
+Many feeds list only the last few hours or a day of items, so a weekly run would miss most of their week. `--store-only` fetches every feed and saves new entries to `feed-store/` (one JSON-lines file per UTC day, kept for 35 days), then exits without matching or writing a report. Every normal run merges the stored entries for each feed with what the feed shows live, and still uses stored entries when a feed fails to load.
+
+```bash
+# Run hourly from cron; each run takes about a minute
+python crawler.py --store-only
+
+# Ignore the store for one run
+python crawler.py --no-entry-store
+```
+
+The store-only output lists how far back each feed reaches. If a feed's oldest entry is newer than the time between runs, the runs aren't frequent enough to catch all of its items.
+
+At the end of each run a per-feed yield table (entries live+stored / in window / matched) is printed to stderr, which is useful when judging whether a new feed earns its place.

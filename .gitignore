@@ -62,3 +62,6 @@ webfeed-cron.log
 
 # Separate clone of the published newsfeed repository
 newsfeed/
+
+# Saved feed entries (crawler.py --store-only) and its run log
+feed-store/
