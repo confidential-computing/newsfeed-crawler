@@ -64,7 +64,26 @@ class TestAcronyms(unittest.TestCase):
 
     def test_singapore_exchange_sgx_does_not_match(self):
         self.assertFalse(keyword_match("Shares listed on SGX rose 3%", KEYWORDS))
+        self.assertFalse(keyword_match(
+            "Cloud and technology stocks trading on the SGX rose", KEYWORDS))
         self.assertTrue(keyword_match("Intel SGX is being retired", KEYWORDS))
+
+    def test_bare_exchange_sgx_does_not_match(self):
+        for text in [
+            "SGX hunts for new CEO as Loh Boon Chye plans 2027 exit",
+            "chairman Koh Boon Hwee will help pick a successor. SGX posted record "
+            "revenue of US$1.17B and US$595M adjusted net profit in FY2026.",
+        ]:
+            self.assertFalse(keyword_match(text, KEYWORDS), text)
+
+    def test_computing_sgx_matches(self):
+        for text in [
+            "Linux 7.5 drops the SGX driver",
+            "Researchers break SGX with a new side-channel",
+            "Code runs inside an SGX enclave",
+            "SGX attestation keys leaked",
+        ]:
+            self.assertTrue(keyword_match(text, KEYWORDS), text)
 
 
 if __name__ == "__main__":

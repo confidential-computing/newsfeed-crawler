@@ -1278,13 +1278,27 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, web
 
 _ENCLAVE_RE = re.compile(r"\benclaves?\b", re.IGNORECASE)
 _ENCLAVE_CONTEXT_CHARS = 80
-_ENCLAVE_CONTEXT_RE = re.compile(
-    r"\b(?:secure|SGX|Nitro|(?-i:TEEs?|TDX|SEV|CCA|Arm)|TrustZone|trusted|confidential|"
+# Computing context shared by 'enclave' and 'SGX'; each adds the other.
+_CONTEXT_TERMS = (
+    r"secure|Nitro|(?-i:TEEs?|TDX|SEV|CCA|Arm)|TrustZone|trusted|confidential|"
     r"attest\w*|encrypt\w*|cryptograph\w*|crypto|processors?|CPUs?|GPUs?|chips?|"
     r"silicon|firmware|hardware|software|memory|iPhones?|Apple|Intel|AMD|"
     r"Azure|AWS|cloud|comput\w*|technolog\w*|keys|isolat\w*|privacy|"
-    r"workloads?|VMs?|virtual|kernel|Open\s?Enclave|Gramine|Occlum)\b",
-    re.IGNORECASE)
+    r"workloads?|VMs?|virtual|kernel|Open\s?Enclave|Gramine|Occlum")
+_ENCLAVE_CONTEXT_RE = re.compile(rf"\b(?:{_CONTEXT_TERMS}|(?-i:SGX))\b", re.IGNORECASE)
+_SGX_RE = re.compile(r"\bSGX\b")
+_SGX_CONTEXT_RE = re.compile(
+    rf"\b(?:{_CONTEXT_TERMS}|enclaves?|Linux|drivers?|side[\s-]channel|"
+    r"vulnerab\w*|exploit\w*)\b", re.IGNORECASE)
+
+
+def _drop_without_context(word_re, context_re, text):
+    """Remove each *word_re* match that has no *context_re* match close by."""
+    return word_re.sub(
+        lambda m: m.group(0) if context_re.search(
+            text, max(0, m.start() - _ENCLAVE_CONTEXT_CHARS),
+            m.end() + _ENCLAVE_CONTEXT_CHARS) else "",
+        text)
 
 
 def keyword_match(text, keywords):
@@ -1292,7 +1306,7 @@ def keyword_match(text, keywords):
     exclude_patterns = [
         r"\bbuick\s+enclave(s)?\b",
         # 'SGX' is also the Singapore Exchange ticker/venue, not Intel SGX
-        r"\b(?:on|listed\s+on|the)\s+SGX\b",
+        r"\b(?:on|listed\s+on)\s+(?:the\s+)?SGX\b",
         r"\bSGX\s*[-:]\s*(?:listed|quoted|mainboard|catalist)\b",
         r"\bSGX\s+(?:mainboard|catalist|securities|listing|listed)\b",
         r"\bSingapore\s+Exchange\s*\(?\s*SGX\s*\)?",
@@ -1310,11 +1324,13 @@ def keyword_match(text, keywords):
     # Kaliningrad) than a TEE. Keep an occurrence only when computing context
     # sits close by: "secure enclave", "SGX enclave", "Nitro Enclaves",
     # "enclave memory".
-    cleaned_text = _ENCLAVE_RE.sub(
-        lambda m: m.group(0) if _ENCLAVE_CONTEXT_RE.search(
-            cleaned_text, max(0, m.start() - _ENCLAVE_CONTEXT_CHARS),
-            m.end() + _ENCLAVE_CONTEXT_CHARS) else "",
-        cleaned_text)
+    cleaned_text = _drop_without_context(_ENCLAVE_RE, _ENCLAVE_CONTEXT_RE, cleaned_text)
+
+    # Bare 'SGX' in Asian business news is usually the Singapore Exchange
+    # ("SGX hunts for new CEO", "SGX posted record revenue"), in phrasings
+    # the patterns above can't anticipate. Intel SGX almost always has
+    # computing context close by: "Intel SGX", "SGX enclave", "SGX driver".
+    cleaned_text = _drop_without_context(_SGX_RE, _SGX_CONTEXT_RE, cleaned_text)
 
     for kw in keywords:
         kw = kw.strip()
