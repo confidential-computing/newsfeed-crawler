@@ -1270,6 +1270,17 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, web
                 f.write(f"  - [{a['title']}]({a['url']}) {detail_fn(a)}\n")
 
 
+_ENCLAVE_RE = re.compile(r"\benclaves?\b", re.IGNORECASE)
+_ENCLAVE_CONTEXT_CHARS = 80
+_ENCLAVE_CONTEXT_RE = re.compile(
+    r"\b(?:secure|SGX|Nitro|(?-i:TEEs?|TDX|SEV|CCA|Arm)|TrustZone|trusted|confidential|"
+    r"attest\w*|encrypt\w*|cryptograph\w*|crypto|processors?|CPUs?|GPUs?|chips?|"
+    r"silicon|firmware|hardware|software|memory|iPhones?|Apple|Intel|AMD|"
+    r"Azure|AWS|cloud|comput\w*|technolog\w*|keys|isolat\w*|privacy|"
+    r"workloads?|VMs?|virtual|kernel|Open\s?Enclave|Gramine|Occlum)\b",
+    re.IGNORECASE)
+
+
 def keyword_match(text, keywords):
     # Exclude non-Confidential Computing uses of 'enclave' or other terms
     exclude_patterns = [
@@ -1289,15 +1300,26 @@ def keyword_match(text, keywords):
     if re.search(r"singapore\s+exchange", text, flags=re.IGNORECASE):
         cleaned_text = re.sub(r"\bSGX\b", "", cleaned_text)
 
+    # In general news 'enclave' is far more often a territory (Gaza, Ceuta,
+    # Kaliningrad) than a TEE. Keep an occurrence only when computing context
+    # sits close by: "secure enclave", "SGX enclave", "Nitro Enclaves",
+    # "enclave memory".
+    cleaned_text = _ENCLAVE_RE.sub(
+        lambda m: m.group(0) if _ENCLAVE_CONTEXT_RE.search(
+            cleaned_text, max(0, m.start() - _ENCLAVE_CONTEXT_CHARS),
+            m.end() + _ENCLAVE_CONTEXT_CHARS) else "",
+        cleaned_text)
+
     for kw in keywords:
         kw = kw.strip()
         if not kw:
             continue
+        # Plurals count too: "TEEs", "enclaves", "confidential containers".
         if re.fullmatch(r"[A-Z0-9-]+", kw):
-            if re.search(rf"\b{re.escape(kw)}\b", cleaned_text):
+            if re.search(rf"\b{re.escape(kw)}s?\b", cleaned_text):
                 return True
         else:
-            if re.search(rf"\b{re.escape(kw)}\b", cleaned_text, flags=re.IGNORECASE):
+            if re.search(rf"\b{re.escape(kw)}s?\b", cleaned_text, flags=re.IGNORECASE):
                 return True
     return False
 
