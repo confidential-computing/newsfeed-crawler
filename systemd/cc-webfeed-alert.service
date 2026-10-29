@@ -1,0 +1,6 @@
+[Unit]
+Description=Alert on Slack that the webfeed run failed
+
+[Service]
+Type=oneshot
+ExecStart=%h/Projects/CC-news-crawler/webfeed-alert.sh

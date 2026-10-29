@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the confidential computing webfeed every Thursday
+
+[Timer]
+OnCalendar=Thu *-*-* 13:00:00 UTC
+# If the machine was off or asleep at 13:00, run as soon as it is back.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly confidential computing webfeed edition
+OnFailure=cc-webfeed-alert.service
+
+[Service]
+Type=oneshot
+# ~/.local/bin so the crawler can call `claude` to refresh CCC members
+Environment=PATH=%h/.local/bin:/usr/bin:/bin
+ExecStart=%h/Projects/CC-news-crawler/webfeed-run.sh
