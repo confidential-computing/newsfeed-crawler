@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Coverage
+- Australian and New Zealand feeds: iTnews, ARN, iTWire, IT Brief and
+  SecurityBrief (AU and NZ editions), Reseller News NZ, CIO New Zealand, and
+  Google News searches of CRN Australia, Cyber Daily, InnovationAus,
+  Information Age and Capital Brief, whose own feeds are gone. Also Google
+  News Australia and New Zealand editions of the confidential computing
+  search.
+
 ## 2.10.0 — 2026-10-29
 
 ### Webfeed editions

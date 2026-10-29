@@ -215,3 +215,55 @@ feeds:
     url: https://news.google.com/rss/search?q=confidential+computing&hl=en-MY&gl=MY&ceid=MY:en
   - name: Google News CC - Philippines
     url: https://news.google.com/rss/search?q=confidential+computing&hl=en-PH&gl=PH&ceid=PH:en
+
+  # --- Australia and New Zealand ---
+  - name: iTnews
+    url: https://www.itnews.com.au/RSS/rss.ashx
+    region: au
+  - name: ARN
+    url: https://www.arnnet.com.au/rss/
+    region: au
+  - name: iTWire
+    url: https://itwire.com/feed/
+    region: au
+  # The IT Brief / SecurityBrief editions share most stories with the Asia
+  # editions; title dedup collapses the copies, and the rest are AU/NZ-only.
+  - name: IT Brief Australia
+    url: https://itbrief.com.au/feed
+    region: au
+  - name: SecurityBrief Australia
+    url: https://securitybrief.com.au/feed
+    region: au
+  - name: IT Brief New Zealand
+    url: https://itbrief.co.nz/feed
+    region: nz
+  - name: SecurityBrief New Zealand
+    url: https://securitybrief.co.nz/feed
+    region: nz
+  - name: Reseller News NZ
+    url: https://www.reseller.co.nz/rss/
+    region: nz
+  - name: CIO New Zealand
+    url: https://www.cio.com/nz/feed/
+    region: nz
+  # These outlets' own feeds are gone (404/403), so read them through Google
+  # News site searches.
+  - name: CRN Australia (via Google News)
+    url: https://news.google.com/rss/search?q=site:crn.com.au+when:7d&hl=en-AU&gl=AU&ceid=AU:en
+    region: au
+  - name: Cyber Daily (via Google News)
+    url: https://news.google.com/rss/search?q=site:cyberdaily.au+when:7d&hl=en-AU&gl=AU&ceid=AU:en
+    region: au
+  - name: InnovationAus (via Google News)
+    url: https://news.google.com/rss/search?q=site:innovationaus.com+when:7d&hl=en-AU&gl=AU&ceid=AU:en
+    region: au
+  - name: Information Age (via Google News)
+    url: https://news.google.com/rss/search?q=site:ia.acs.org.au+when:7d&hl=en-AU&gl=AU&ceid=AU:en
+    region: au
+  - name: Capital Brief (via Google News)
+    url: https://news.google.com/rss/search?q=site:capitalbrief.com+when:7d&hl=en-AU&gl=AU&ceid=AU:en
+    region: au
+  - name: Google News CC - Australia
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en-AU&gl=AU&ceid=AU:en
+  - name: Google News CC - New Zealand
+    url: https://news.google.com/rss/search?q=confidential+computing&hl=en-NZ&gl=NZ&ceid=NZ:en

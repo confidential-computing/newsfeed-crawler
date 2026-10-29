@@ -64,6 +64,8 @@ OUTLET_REGIONS = {
     "channelnewsasia.com": "sg", "livemint.com": "in", "indianexpress.com": "in",
     "digitalnewsasia.com": "my", "digiconasia.net": "asia", "thelec.net": "kr",
     "taipeitimes.com": "tw", "koreatimes.com": "kr",
+    # Australia and New Zealand
+    "itwire.com": "au", "innovationaus.com": "au", "capitalbrief.com": "au",
 }
 
 # Country-code TLDs that identify an outlet's region. Second-level forms such
