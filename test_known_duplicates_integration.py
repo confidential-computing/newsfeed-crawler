@@ -12,7 +12,11 @@ import json
 # Add the current directory to Python path to import crawler
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import crawler
 from crawler import deduplicate_articles
+
+# The test URLs are made up: never fetch them for the text comparison.
+crawler.fetch_article_text = lambda url: ""
 
 
 def simulate_duplicate_scenario():
@@ -45,7 +49,9 @@ def simulate_duplicate_scenario():
                 "title": "Critical Flaw Discovered in CC Remote Attestation Trust Mechanism",
                 "url": "https://news.google.com/articles/redirect?url=https%3A%2F%2Fsecuritytoday.com%2Farticles%2Fcc-attestation-vulnerability-2024",
                 "published": "Mon, 15 Apr 2024 10:00:00 GMT",
-                "publisher": "Google News"
+                "publisher": "Google News",
+                # The crawler records the outlet behind a Google News link
+                "host": "securitytoday.com"
             },
             # Different URL, same story (picked up by different aggregator)
             {

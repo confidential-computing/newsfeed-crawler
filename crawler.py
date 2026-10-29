@@ -204,111 +204,122 @@ def compute_content_hash(title, content_text=""):
     return hashlib.md5(combined.encode('utf-8')).hexdigest()
 
 
-def deduplicate_articles(categorized, similarity_threshold=0.7):
+# Pairs of articles whose titles are at least this similar (Jaccard on title
+# tokens) are compared by their text; less similar pairs never are.
+DEDUP_TITLE_SIMILARITY = 0.6
+# Share of 5-word phrases two texts must have in common, relative to the
+# shorter one, to count as the same article. Syndicated copies score near 1;
+# two outlets writing up the same press release score far lower.
+DEDUP_TEXT_OVERLAP = 0.8
+# Below this many phrases a text is a teaser, a paywall or a failed
+# extraction, and too short to say two articles are the same.
+DEDUP_MIN_SHINGLES = 40
+
+
+def _shingles(text, n=5):
+    words = re.findall(r"\w+", (text or "").lower())
+    return {" ".join(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+def text_overlap(text_a, text_b):
+    """Share of 5-word phrases two texts have in common, relative to the
+    shorter text; 0.0 if either is too short to judge."""
+    a, b = _shingles(text_a), _shingles(text_b)
+    if min(len(a), len(b)) < DEDUP_MIN_SHINGLES:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
+
+
+def _site(host):
+    """The registrable part of a host, so an outlet's regional editions
+    (ca.investing.com, in.investing.com) count as one outlet."""
+    labels = (host or "").split(".")
+    keep = 3 if len(labels) >= 3 and len(labels[-1]) == 2 and \
+        labels[-2] in ("co", "com", "net", "org", "gov", "ac", "edu") else 2
+    return ".".join(labels[-keep:])
+
+
+def _dedup_title(article):
+    """Title without the " - Publisher" suffix Google News appends."""
+    title = article.get("title", "")
+    if _host(article.get("url")) in _AGGREGATOR_HOSTS:
+        title = re.sub(r"\s+-\s+[^-]+$", "", title)
+    return title
+
+
+def deduplicate_articles(categorized, fetch_text=None):
     """
-    Remove duplicate articles from categorized buckets using multiple strategies:
-    1. Exact URL matches (after normalization)
-    2. Title similarity using Jaccard coefficient
-    3. Content hash when available
-    
-    Returns updated categorized dict and duplicate count.
+    Drop copies of the same article, but keep the same story when different
+    outlets report it in their own words.
+
+    A later article is a copy of one already kept when
+    1. their URLs normalise to the same address, or
+    2. their titles are similar and either
+       a. the same outlet published both under the same title (one article
+          reached through two feeds, e.g. two Google News editions, or an
+          outlet's regional editions), or
+       b. their texts are the same (syndication, e.g. IT Brief Australia
+          republishing an IT Brief Asia story).
+
+    Text is fetched lazily: only for pairs with similar titles, once per URL.
+    If either text can't be read (Google News redirect links, paywalls) the
+    articles are not judged copies, so both are kept.
+
+    Returns (categorized, number of copies removed).
     """
+    fetch_text = fetch_text or fetch_article_text
+    texts = {}
+
+    def text_of(article):
+        url = article.get("url", "")
+        if url not in texts:
+            texts[url] = fetch_text(url) if url else ""
+        return texts[url]
+
     seen_urls = set()
-    seen_hashes = set()
-    seen_titles = []  # List of (tokens, original_article) for similarity comparison
-    duplicates_removed = 0
-    
-    def is_duplicate(article, full_text=""):
-        nonlocal duplicates_removed
-        
-        # Strategy 1: URL normalization
-        normalized_url = normalize_url(article.get("url", ""))
-        if normalized_url and normalized_url in seen_urls:
-            duplicates_removed += 1
-            return True
-        
-        # Strategy 2: Content hash (when full text is available)
-        if full_text:
-            content_hash = compute_content_hash(article.get("title", ""), full_text)
-            if content_hash in seen_hashes:
-                duplicates_removed += 1
-                return True
-            seen_hashes.add(content_hash)
-        
-        # Strategy 3: Title similarity using existing _title_tokens function
-        title = article.get("title", "")
-        if title:
-            current_tokens = _title_tokens(title)
-            
-            for seen_tokens, seen_article in seen_titles:
-                if not current_tokens or not seen_tokens:
-                    continue
-                    
-                # Calculate Jaccard similarity
-                intersection = len(current_tokens & seen_tokens)
-                union = len(current_tokens | seen_tokens)
-                
-                if union > 0:
-                    jaccard = intersection / union
-                    if jaccard >= similarity_threshold:
-                        # Additional check: if URLs are different but very similar titles,
-                        # require higher similarity to avoid false positives
-                        url1 = normalize_url(article.get("url", ""))
-                        url2 = normalize_url(seen_article.get("url", ""))
-                        
-                        if url1 != url2:
-                            # Extract domains for comparison
-                            try:
-                                domain1 = urllib.parse.urlparse(url1).netloc.lower()
-                                domain2 = urllib.parse.urlparse(url2).netloc.lower()
-                                
-                                # If completely different domains and identical titles,
-                                # be very conservative to avoid false positives
-                                if domain1 != domain2 and jaccard >= 1.0:
-                                    # Identical titles from different domains are likely different stories
-                                    # unless they're news aggregators or syndication
-                                    aggregator_domains = {'news.google.com', 'news.yahoo.com', 'msn.com', 'reddit.com'}
-                                    if not (domain1 in aggregator_domains or domain2 in aggregator_domains):
-                                        continue  # Skip - likely different stories with same generic title
-                                
-                                # For different domains, require very high similarity
-                                if jaccard < 0.85:
-                                    continue  # Different URLs need very high title similarity
-                            except:
-                                # If URL parsing fails, fall back to conservative approach
-                                if jaccard < 0.85:
-                                    continue
-                            
-                        duplicates_removed += 1
-                        return True
-            
-            # Add to seen titles for future comparisons
-            seen_titles.append((current_tokens, article))
-        
-        # Not a duplicate - record URL
-        if normalized_url:
-            seen_urls.add(normalized_url)
-        
-        return False
-    
-    # Process each category
-    for category in ["by_member", "about_member", "dont"]:
+    kept = []  # (title tokens, normalised title, outlet host, article)
+    removed = 0
+
+    for category in ("by_member", "about_member", "dont"):
         if category not in categorized:
             continue
-            
-        original_articles = categorized[category]
-        deduplicated = []
-        
-        for article in original_articles:
-            # For deduplication, we don't have access to full text here
-            # since that was fetched during collection. We could re-fetch
-            # but that would be expensive. For now, rely on URL and title.
-            if not is_duplicate(article):
-                deduplicated.append(article)
-        
-        categorized[category] = deduplicated
-    
-    return categorized, duplicates_removed
+        unique = []
+        for article in categorized[category]:
+            url = normalize_url(article.get("url", ""))
+            if url and url in seen_urls:
+                removed += 1
+                continue
+            if url:
+                seen_urls.add(url)
+
+            title = _dedup_title(article)
+            tokens = _title_tokens(title)
+            norm_title = " ".join(re.findall(r"\w+", title.lower()))
+            host = article.get("host") or _host(article.get("url"))
+            # The outlet behind a Google News link without a host is unknown
+            host = "" if host in _AGGREGATOR_HOSTS else _site(host)
+
+            original = None
+            for k_tokens, k_title, k_host, k_article in kept:
+                if not tokens or not k_tokens:
+                    continue
+                if len(tokens & k_tokens) / len(tokens | k_tokens) < DEDUP_TITLE_SIMILARITY:
+                    continue
+                if (host and host == k_host and norm_title == k_title) or \
+                        text_overlap(text_of(article), text_of(k_article)) >= DEDUP_TEXT_OVERLAP:
+                    original = k_article
+                    break
+
+            if original is not None:
+                removed += 1
+                print(f"  copy: {article.get('title', '')[:70]!r} ({article.get('publisher')}) "
+                      f"= {original.get('publisher')}", file=sys.stderr)
+                continue
+            kept.append((tokens, norm_title, host, article))
+            unique.append(article)
+        categorized[category] = unique
+
+    return categorized, removed
 
 
 def fetch_members(cache_path):
@@ -2087,7 +2098,7 @@ def main():
             if by:
                 categorized["by_member"].append({
                     "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "region": region, "member": by,
+                    "publisher": feed_name, "region": region, "host": host, "member": by,
                 })
                 continue
 
@@ -2095,12 +2106,12 @@ def main():
             if about:
                 categorized["about_member"].append({
                     "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "region": region, "member": about,
+                    "publisher": feed_name, "region": region, "host": host, "member": about,
                 })
             else:
                 categorized["dont"].append({
                     "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "region": region,
+                    "publisher": feed_name, "region": region, "host": host,
                 })
 
         feed_yield.append((feed_name, len(entries), feed_in_window, feed_matched))
@@ -2178,7 +2189,7 @@ def main():
                 if by:
                     categorized["by_member"].append({
                         "title": title, "url": url, "published": pub_fmt,
-                        "publisher": publisher, "region": region, "member": by,
+                        "publisher": publisher, "region": region, "host": host, "member": by,
                     })
                     continue
 
@@ -2186,12 +2197,12 @@ def main():
                 if about:
                     categorized["about_member"].append({
                         "title": title, "url": url, "published": pub_fmt,
-                        "publisher": publisher, "region": region, "member": about,
+                        "publisher": publisher, "region": region, "host": host, "member": about,
                     })
                 else:
                     categorized["dont"].append({
                         "title": title, "url": url, "published": pub_fmt,
-                        "publisher": publisher, "region": region,
+                        "publisher": publisher, "region": region, "host": host,
                     })
 
             print(f"  Matched {gnews_matched} from Google News.", file=sys.stderr)
@@ -2213,7 +2224,7 @@ def main():
         print("Deduplicating articles...", file=sys.stderr)
         categorized, duplicates_removed = deduplicate_articles(categorized)
         if duplicates_removed > 0:
-            print(f"  Removed {duplicates_removed} duplicate articles.", file=sys.stderr)
+            print(f"  Removed {duplicates_removed} copies of articles already listed.", file=sys.stderr)
             # Update total matched count
             final_matched = sum(len(articles) for articles in categorized.values())
             print(f"  {final_matched} unique articles remaining.", file=sys.stderr)

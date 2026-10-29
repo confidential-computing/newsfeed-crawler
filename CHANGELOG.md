@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Deduplication
+- Articles are dropped as duplicates only when they are copies: the same
+  URL, the same outlet and title, or the same text (syndication). Different
+  outlets' reports of one story are all kept; previously similar titles from
+  different outlets were enough to drop one. Text is fetched only for pairs
+  with similar titles. Each copy removed is logged.
+
 ### Coverage
 - Australian and New Zealand feeds: iTnews, ARN, iTWire, IT Brief and
   SecurityBrief (AU and NZ editions), Reseller News NZ, CIO New Zealand, and

@@ -10,7 +10,11 @@ import os
 # Add the current directory to Python path to import crawler
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import crawler
 from crawler import deduplicate_articles
+
+# The test URLs are made up: never fetch them for the text comparison.
+crawler.fetch_article_text = lambda url: ""
 
 def test_real_world_scenario():
     """
@@ -197,10 +201,12 @@ def test_cross_category_deduplication():
     print(f"Total articles: {total_before} -> {total_after}")
     print(f"Math check: {total_before} - {duplicates_removed} = {total_before - duplicates_removed}")
     
-    assert duplicates_removed > 0, "Should have found cross-category duplicates"
+    # The same announcement written up by three different outlets is three
+    # articles, not copies of one.
+    assert duplicates_removed == 0, "Different outlets' reports of one story should all be kept"
     assert total_after == total_before - duplicates_removed, f"Math error: {total_after} != {total_before} - {duplicates_removed}"
     
-    print("✅ Cross-category deduplication test passed!")
+    print("✅ Cross-category test passed: other outlets' reports kept!")
 
 
 if __name__ == '__main__':

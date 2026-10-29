@@ -10,7 +10,27 @@ import unittest
 # Add the current directory to Python path to import crawler
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from crawler import normalize_url, compute_content_hash, deduplicate_articles, _title_tokens
+from crawler import (normalize_url, compute_content_hash, deduplicate_articles, _title_tokens,
+                     text_overlap)
+
+# Two texts long enough to judge (> DEDUP_MIN_SHINGLES phrases each).
+STORY = ("Vendor X today announced a confidential computing service that runs AI "
+         "models inside trusted execution environments on its cloud. " +
+         " ".join(f"Paragraph {i} explains how customers attest workload {i} before "
+                  f"sending sensitive data to the enclave." for i in range(10)))
+OTHER_WRITEUP = ("Customers of Vendor X can now keep data encrypted while AI models use it, "
+                 "the company said on Tuesday. " +
+                 " ".join(f"Analyst {i} told us that point {i} matters for regulated "
+                          f"industries such as banking and health care." for i in range(10)))
+
+
+def texts(mapping):
+    """fetch_text stub: URL -> text, recording which URLs were asked for."""
+    def fetch(url):
+        fetch.asked.append(url)
+        return mapping.get(url, "")
+    fetch.asked = []
+    return fetch
 
 
 class TestDeduplication(unittest.TestCase):
@@ -116,43 +136,112 @@ class TestDeduplication(unittest.TestCase):
         self.assertEqual(len(result["dont"]), 1)
         self.assertEqual(result["dont"][0]["title"], "Article 1")
     
-    def test_deduplicate_title_similarity(self):
-        """Test deduplication based on title similarity"""
+    def test_same_story_from_different_outlets_is_kept(self):
+        """Similar titles from two outlets with their own write-ups: keep both"""
         articles = {
             "dont": [
-                {
-                    "title": "Major security vulnerability discovered in confidential computing",
-                    "url": "https://site1.com/article1",
-                    "published": "Mon, 01 Jan 2024 10:00:00 GMT",
-                    "publisher": "Site 1"
-                },
-                {
-                    "title": "Major Security Vulnerability Discovered in Confidential Computing",
-                    "url": "https://site2.com/article2", 
-                    "published": "Mon, 01 Jan 2024 11:00:00 GMT",
-                    "publisher": "Site 2"
-                },
-                {
-                    "title": "Completely different article about AI",
-                    "url": "https://site3.com/article3",
-                    "published": "Mon, 01 Jan 2024 12:00:00 GMT",
-                    "publisher": "Site 3"
-                }
+                {"title": "Vendor X launches confidential AI service",
+                 "url": "https://site1.com/a", "publisher": "Site 1"},
+                {"title": "Vendor X Launches Confidential AI Service",
+                 "url": "https://site2.com/b", "publisher": "Site 2"},
             ],
-            "by_member": [],
-            "about_member": []
+            "by_member": [], "about_member": [],
         }
-        
-        result, duplicates_removed = deduplicate_articles(articles)
-        
-        # Should detect the similar titles as duplicates
-        self.assertEqual(duplicates_removed, 1)
+        fetch = texts({"https://site1.com/a": STORY, "https://site2.com/b": OTHER_WRITEUP})
+        result, removed = deduplicate_articles(articles, fetch_text=fetch)
+        self.assertEqual(removed, 0)
         self.assertEqual(len(result["dont"]), 2)
-        
-        # Check that the AI article is preserved
-        titles = [a["title"] for a in result["dont"]]
-        self.assertTrue(any("AI" in title for title in titles))
-    
+
+    def test_syndicated_copy_is_removed(self):
+        """Same text on two outlets (syndication): keep only the first"""
+        articles = {
+            "dont": [
+                {"title": "Vendor X launches confidential AI service",
+                 "url": "https://itbrief.asia/story/x", "publisher": "IT Brief Asia"},
+                {"title": "Vendor X launches confidential AI service in Australia",
+                 "url": "https://itbrief.com.au/story/x", "publisher": "IT Brief Australia"},
+            ],
+            "by_member": [], "about_member": [],
+        }
+        fetch = texts({"https://itbrief.asia/story/x": STORY,
+                       "https://itbrief.com.au/story/x": STORY + " Local pricing follows."})
+        result, removed = deduplicate_articles(articles, fetch_text=fetch)
+        self.assertEqual(removed, 1)
+        self.assertEqual([a["publisher"] for a in result["dont"]], ["IT Brief Asia"])
+
+    def test_unreadable_text_keeps_both(self):
+        """If either text can't be read, the articles are not judged copies"""
+        articles = {
+            "dont": [
+                {"title": "Vendor X launches confidential AI service",
+                 "url": "https://site1.com/a", "publisher": "Site 1"},
+                {"title": "Vendor X launches confidential AI service",
+                 "url": "https://site2.com/paywalled", "publisher": "Site 2"},
+            ],
+            "by_member": [], "about_member": [],
+        }
+        fetch = texts({"https://site1.com/a": STORY, "https://site2.com/paywalled": "Subscribe to read."})
+        result, removed = deduplicate_articles(articles, fetch_text=fetch)
+        self.assertEqual(removed, 0)
+
+    def test_same_outlet_through_two_google_news_feeds(self):
+        """One outlet's article reached via two Google News editions: one copy"""
+        articles = {
+            "dont": [
+                {"title": "Vendor X launches confidential AI service - Example Times",
+                 "url": "https://news.google.com/rss/articles/AAA", "host": "example.com",
+                 "publisher": "Google News CC"},
+                {"title": "Vendor X launches confidential AI service - Example Times",
+                 "url": "https://news.google.com/rss/articles/BBB", "host": "example.com",
+                 "publisher": "Google News CC - Australia"},
+                {"title": "Vendor X launches confidential AI service - Other Daily",
+                 "url": "https://news.google.com/rss/articles/CCC", "host": "other.com",
+                 "publisher": "Google News CC"},
+            ],
+            "by_member": [], "about_member": [],
+        }
+        result, removed = deduplicate_articles(articles, fetch_text=texts({}))
+        self.assertEqual(removed, 1)
+        self.assertEqual([a["host"] for a in result["dont"]], ["example.com", "other.com"])
+
+    def test_regional_editions_of_one_outlet(self):
+        """ca.investing.com and in.investing.com are one outlet; .com.au is not a site"""
+        articles = {
+            "dont": [
+                {"title": "Vendor X joins consortium - Investing.com Canada",
+                 "url": "https://news.google.com/rss/articles/AAA", "host": "ca.investing.com"},
+                {"title": "Vendor X joins consortium - Investing.com India",
+                 "url": "https://news.google.com/rss/articles/BBB", "host": "in.investing.com"},
+                {"title": "Vendor X joins consortium - iTnews",
+                 "url": "https://news.google.com/rss/articles/CCC", "host": "www.itnews.com.au"},
+                {"title": "Vendor X joins consortium - CRN Australia",
+                 "url": "https://news.google.com/rss/articles/DDD", "host": "www.crn.com.au"},
+            ],
+            "by_member": [], "about_member": [],
+        }
+        result, removed = deduplicate_articles(articles, fetch_text=texts({}))
+        self.assertEqual(removed, 1)
+        self.assertEqual([a["host"] for a in result["dont"]],
+                         ["ca.investing.com", "www.itnews.com.au", "www.crn.com.au"])
+
+    def test_text_fetched_only_for_similar_titles(self):
+        """Lazy: dissimilar titles never trigger a fetch"""
+        articles = {
+            "dont": [
+                {"title": "Intel announces new SGX technology", "url": "https://a.com/1"},
+                {"title": "AMD reveals new confidential computing features", "url": "https://b.com/2"},
+            ],
+            "by_member": [], "about_member": [],
+        }
+        fetch = texts({})
+        deduplicate_articles(articles, fetch_text=fetch)
+        self.assertEqual(fetch.asked, [])
+
+    def test_text_overlap(self):
+        self.assertGreater(text_overlap(STORY, STORY + " One more sentence here."), 0.9)
+        self.assertLess(text_overlap(STORY, OTHER_WRITEUP), 0.2)
+        self.assertEqual(text_overlap(STORY, "Too short."), 0.0)
+
     def test_deduplicate_no_false_positives(self):
         """Test that similar but distinct articles are not deduplicated"""
         articles = {
@@ -187,35 +276,23 @@ class TestDeduplication(unittest.TestCase):
         self.assertEqual(len(result["dont"]), 3)
     
     def test_deduplicate_across_categories(self):
-        """Test that deduplication works across different categories"""
+        """A copy in a later category is removed; the first category keeps it"""
         articles = {
             "by_member": [
-                {
-                    "title": "Company announces new security feature",
-                    "url": "https://company.com/news1",
-                    "published": "Mon, 01 Jan 2024 10:00:00 GMT",
-                    "publisher": "Company Blog",
-                    "member": "Example Corp"
-                }
+                {"title": "Company announces new security feature",
+                 "url": "https://company.com/news1", "publisher": "Company Blog",
+                 "member": "Example Corp"},
             ],
             "about_member": [
-                {
-                    "title": "Company Announces New Security Feature", 
-                    "url": "https://techreporter.com/news1",
-                    "published": "Mon, 01 Jan 2024 11:00:00 GMT",
-                    "publisher": "Tech Reporter",
-                    "member": "Example Corp"
-                }
+                {"title": "Company Announces New Security Feature",
+                 "url": "https://techreporter.com/news1", "publisher": "Tech Reporter",
+                 "member": "Example Corp"},
             ],
-            "dont": []
+            "dont": [],
         }
-        
-        result, duplicates_removed = deduplicate_articles(articles)
-        
-        # Should detect duplicate across categories
-        self.assertEqual(duplicates_removed, 1)
-        
-        # Should keep the first one (by_member)
+        fetch = texts({"https://company.com/news1": STORY, "https://techreporter.com/news1": STORY})
+        result, removed = deduplicate_articles(articles, fetch_text=fetch)
+        self.assertEqual(removed, 1)
         self.assertEqual(len(result["by_member"]), 1)
         self.assertEqual(len(result["about_member"]), 0)
 

@@ -227,7 +227,7 @@ feeds:
     url: https://itwire.com/feed/
     region: au
   # The IT Brief / SecurityBrief editions share most stories with the Asia
-  # editions; title dedup collapses the copies, and the rest are AU/NZ-only.
+  # editions; deduplication drops copies whose text matches.
   - name: IT Brief Australia
     url: https://itbrief.com.au/feed
     region: au
