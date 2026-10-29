@@ -1237,7 +1237,8 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, web
     When *no_cluster* is True (or *cluster_labels* is empty) articles are
     rendered as a flat bullet list, identical to pre-clustering behaviour.
     Multi-article clusters are rendered under a bold story label; singletons
-    are rendered as plain bullets so the report stays readable.
+    are rendered as plain bullets so the report stays readable. In *webfeed*
+    mode clusters get no label: their articles are plain, adjacent bullets.
     """
     if not articles:
         if not webfeed:
@@ -1263,6 +1264,11 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, web
         if len(group) == 1:
             a = group[0]
             f.write(f"- [{a['title']}]({a['url']}) {detail_fn(a)}\n")
+        elif webfeed:
+            # Published editions are plain lists: keep the story's articles
+            # together, but with no label line or indent.
+            for a in group:
+                f.write(f"- [{a['title']}]({a['url']}) {detail_fn(a)}\n")
         else:
             label = cluster_labels.get(cid, f"Story {cid}")
             f.write(f"\n**{label}**\n")
