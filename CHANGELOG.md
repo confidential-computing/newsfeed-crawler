@@ -16,6 +16,9 @@
   severity levels (SEV1, SEV-2) never count. Incident-severity jargon
   ("agent accelerated SEVs") had matched an InfoQ panel on frontend
   architecture. SEV-SNP and SEV-ES are unaffected.
+- Keywords inside package names (lowercase, three or more hyphen-joined
+  parts, e.g. `aws-nitro-enclaves-cli`) are ignored. LWN's daily "Security
+  updates for ..." tables matched on them every week.
 
 ### Speed
 - Article text for entries whose title and summary don't match is now

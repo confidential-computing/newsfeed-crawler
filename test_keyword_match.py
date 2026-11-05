@@ -89,6 +89,20 @@ class TestAcronyms(unittest.TestCase):
         ]:
             self.assertTrue(keyword_match(text, KEYWORDS), text)
 
+    def test_package_names_do_not_match(self):
+        # LWN "Security updates for Friday", 2026-11-05 edition
+        for text in [
+            "SUSE openSUSE-SU-2026:12161-1 TW aws-nitro-enclaves-binaryblobs-upstream 2026-10-29",
+            "Fedora FEDORA-2026-1234 F45 aws-nitro-enclaves-cli 2026-11-02",
+        ]:
+            self.assertFalse(keyword_match(text, KEYWORDS), text)
+
+    def test_hyphenated_prose_still_matches(self):
+        for text in ["AWS Nitro Enclaves now support GPUs", "Intel SGX-enabled servers",
+                     "AMD SEV-SNP guests", "TEE-based key management",
+                     "the Confidential Containers project"]:
+            self.assertTrue(keyword_match(text, KEYWORDS), text)
+
     def test_incident_severity_sev_does_not_match(self):
         for text in [
             # InfoQ panel transcript, 2026-11-04 edition

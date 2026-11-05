@@ -1666,6 +1666,14 @@ _SEV_CONTEXT_RE = re.compile(
     re.IGNORECASE)
 
 
+# Package names in distribution advisory lists ("aws-nitro-enclaves-cli" in
+# LWN's daily "Security updates for ..." tables) contain keywords without the
+# page being about confidential computing. Lowercase tokens of three or more
+# hyphen-joined parts are treated as package names and ignored; prose such as
+# "Nitro Enclaves", "SGX-enabled" or "SEV-SNP" is unaffected.
+_PACKAGE_NAME_RE = re.compile(r"(?<![\w/.-])[a-z0-9]+(?:-[a-z0-9]+){2,}(?![\w/-])")
+
+
 def _drop_without_context(word_re, context_re, text):
     """Remove each *word_re* match that has no *context_re* match close by."""
     return word_re.sub(
@@ -1707,6 +1715,7 @@ def keyword_match(text, keywords, lang="en"):
         r"\bSingapore\s+Exchange\s*\(?\s*SGX\s*\)?",
         r"\bSGX\s*\(?\s*Singapore\s+Exchange\s*\)?",
     ]
+    text = _PACKAGE_NAME_RE.sub(" ", text)
     cleaned_text = text
     for pattern in exclude_patterns:
         cleaned_text = re.sub(pattern, "", cleaned_text, flags=re.IGNORECASE)
