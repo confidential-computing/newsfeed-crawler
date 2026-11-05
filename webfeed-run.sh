@@ -1,7 +1,8 @@
 #!/bin/bash
-# Weekly webfeed run, started by cc-webfeed.timer. Exits non-zero, which makes
-# systemd start cc-webfeed-alert.service, when the crawler fails or when it
-# exits cleanly without writing a new edition (empty window, refused re-run).
+# Weekly webfeed run, started by webfeed-due.sh from cron (or by
+# cc-webfeed.timer). Exits non-zero when the crawler fails or when it exits
+# cleanly without writing a new edition (empty window, refused re-run); under
+# systemd that starts cc-webfeed-alert.service.
 # Extra arguments are passed to the crawler, e.g. for testing.
 set -u
 
@@ -17,9 +18,14 @@ for _ in $(seq 24); do
 done
 
 before=$(stat -c %Y "$state" 2>/dev/null || echo 0)
+started=$(date +%s)
 echo "=== $(date -u '+%Y-%m-%d %H:%M:%S') UTC webfeed run ===" >> "$log"
-/usr/bin/python3 "$dir/crawler.py" --webfeed --webfeed-exclude-uk "$@" 2>&1 | tee -a "$log"
+# -u: write the log line by line. Buffered output lost the tail of the log when
+# the 2026-11-05 run was killed by a reboot, hiding how far it had got.
+/usr/bin/python3 -u "$dir/crawler.py" --webfeed --webfeed-exclude-uk "$@" 2>&1 | tee -a "$log"
 status=${PIPESTATUS[0]}
+# A start line with no matching finish line means the run was killed.
+echo "=== $(date -u '+%Y-%m-%d %H:%M:%S') UTC webfeed run finished (status $status, $(( $(date +%s) - started ))s) ===" >> "$log"
 
 if [ "$status" -ne 0 ]; then
     echo "webfeed-run: crawler exited with status $status" | tee -a "$log" >&2

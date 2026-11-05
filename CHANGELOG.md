@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Scheduling
+- The weekly edition is now started by `webfeed-due.sh`, checked hourly from
+  cron, instead of a single Thursday 13:00 cron line. A run that is missed,
+  killed (the 2026-11-05 run was cut off by a reboot for an OS update) or
+  fails is retried every hour until an edition is written.
+- `webfeed-run.sh` writes the crawler's output to the log unbuffered, and adds
+  a closing line with the exit status and duration, so a killed run is visible
+  in `webfeed-cron.log`.
+
+### Speed
+- Article text for entries whose title and summary don't match is now
+  fetched in parallel after all feeds are read, at most 2 requests per server
+  (IP address) at a time. With a week of stored entries (~10,700 fetches)
+  this takes ~9 minutes instead of an estimated 6-9 hours. The report is
+  unchanged: entries keep their feed order, so duplicate removal keeps the
+  same copy.
+- `python-dateutil` added to requirements.txt.
+
 ### Languages
 - Feeds can be in other languages (`lang:` in feeds.yaml). Their articles are
   matched against the English keywords plus the language's own list under

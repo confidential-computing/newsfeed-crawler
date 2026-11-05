@@ -100,3 +100,15 @@ If the filesystem holding the store is more than 80% full (`--entry-store-disk-l
 The store-only output lists how far back each feed reaches. If a feed's oldest entry is newer than the time between runs, the runs aren't frequent enough to catch all of its items.
 
 At the end of each run a per-feed yield table (entries live+stored / in window / matched) is printed to stderr, which is useful when judging whether a new feed earns its place.
+
+## Scheduling the weekly edition
+
+`webfeed-due.sh` runs hourly from cron:
+
+```
+0 * * * * /home/mike/Projects/CC-news-crawler/webfeed-due.sh >/dev/null 2>&1
+```
+
+It starts `webfeed-run.sh` (which runs `crawler.py --webfeed --webfeed-exclude-uk`) when no edition has been written since the most recent Thursday 13:00 UTC, according to `last_run_at` in `.webfeed-state.json`. A run that was missed because the machine was off, or that was killed or failed, is therefore retried at the next hour until an edition is written. A late edition resumes from the previous edition's cutoff, so nothing is dropped or repeated. A lock (`.webfeed.lock`) stops a second run from starting while a slow run is still going.
+
+`webfeed-run.sh` appends to `webfeed-cron.log`, with a start line and a `finished (status N, Ns)` line for each run. A start line with no finish line means the run was killed, for example by a reboot.
