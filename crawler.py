@@ -850,6 +850,49 @@ def fetch_article_text(url):
         return ""
 
 
+def fetch_article_texts(urls, workers=48, per_server=2):
+    """
+    {url: article text} for *urls*, fetched in parallel. At most *per_server*
+    requests go to one server (IP address) at a time, so a big feed doesn't
+    hammer its site. Hosts are grouped by address because outlets share
+    servers: the six IT Brief / SecurityBrief sites are one machine, which
+    started answering 403 when each hostname got its own allowance.
+    Failed fetches give "", as with fetch_article_text().
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from urllib.parse import urlparse
+
+    urls = list(dict.fromkeys(urls))
+
+    server_of = {}
+    for host in {urlparse(u).hostname or "" for u in urls}:
+        try:
+            server_of[host] = socket.gethostbyname(host)
+        except (OSError, UnicodeError):
+            server_of[host] = host
+
+    def server(url):
+        return server_of[urlparse(url).hostname or ""]
+
+    locks = {s: threading.Semaphore(per_server) for s in set(server_of.values())}
+
+    def one(url):
+        with locks[server(url)]:
+            return url, fetch_article_text(url)
+
+    # Interleave servers so the workers don't all queue behind one site.
+    by_server = {}
+    for url in urls:
+        by_server.setdefault(server(url), []).append(url)
+    queues = list(by_server.values())
+    order = [q[i] for i in range(max(map(len, queues), default=0))
+             for q in queues if i < len(q)]
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return dict(pool.map(one, order))
+
+
 _TITLE_VERBS = {
     'rebrands', 'relaunches', 'launches', 'announces', 'introduces', 'reveals',
     'wins', 'hires', 'appoints', 'confirms', 'submits', 'makes', 'gets', 'adds',
@@ -2138,6 +2181,19 @@ def main():
         args.entry_store, args.entry_store_days,
         read_only=store_disk_full(args)).load()
     crawl_time = datetime.now(timezone.utc).replace(microsecond=0)
+    needs_text = []  # entries to check against their full article text
+
+    def _record(item, haystack, author):
+        """File a matched entry under by-member, about-member or neither."""
+        by = is_by_member(item["publisher"], author, members)
+        if by:
+            categorized["by_member"].append({**item, "member": by})
+            return
+        about = is_about_member(haystack, members)
+        if about:
+            categorized["about_member"].append({**item, "member": about})
+        else:
+            categorized["dont"].append(item)
 
     for feed_def in feeds:
         feed_name = feed_def.get("name", feed_def["url"])
@@ -2208,40 +2264,46 @@ def main():
             pub_str = pub.strftime("%a, %d %b %Y %H:%M:%S %Z") if pub else ""
 
             haystack = f"{title} {summary} {tags}"
+            item = {"title": title, "url": link, "published": pub_str,
+                    "publisher": feed_name, "region": region, "host": host,
+                    "lang": feed_lang, "_seq": total_entries}
 
             if not keyword_match(haystack, feed_keywords, feed_lang):
                 if not args.no_fetch_articles and link:
-                    full_text = fetch_article_text(link)
-                    if not keyword_match(full_text, feed_keywords, feed_lang):
-                        continue
-                    haystack = f"{haystack} {full_text}"
-                else:
-                    continue
+                    # Checked against the article text after the feed loop,
+                    # when all such fetches run in parallel.
+                    needs_text.append((item, haystack, author, feed_keywords,
+                                       len(feed_yield)))
+                continue
 
             total_matched += 1
             feed_matched += 1
+            _record(item, haystack, author)
 
-            by = is_by_member(feed_name, author, members)
-            if by:
-                categorized["by_member"].append({
-                    "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "region": region, "host": host, "lang": feed_lang, "member": by,
-                })
+        feed_yield.append([feed_name, len(entries), feed_in_window, feed_matched])
+
+    # Entries whose title, summary and tags don't match are checked against the
+    # full article text. With a week of stored entries that is ~10,000 fetches,
+    # which took hours one at a time (the 2026-11-05 run was still going when
+    # a reboot killed it), so they run in parallel.
+    if needs_text:
+        print(f"Checking full text of {len(needs_text)} articles...", file=sys.stderr)
+        started = time.time()
+        texts = fetch_article_texts([item["url"] for item, *_ in needs_text])
+        for item, haystack, author, feed_keywords, yield_index in needs_text:
+            full_text = texts.get(item["url"], "")
+            if not keyword_match(full_text, feed_keywords, item["lang"]):
                 continue
-
-            about = is_about_member(haystack, members)
-            if about:
-                categorized["about_member"].append({
-                    "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "region": region, "host": host, "lang": feed_lang, "member": about,
-                })
-            else:
-                categorized["dont"].append({
-                    "title": title, "url": link, "published": pub_str,
-                    "publisher": feed_name, "region": region, "host": host, "lang": feed_lang,
-                })
-
-        feed_yield.append((feed_name, len(entries), feed_in_window, feed_matched))
+            total_matched += 1
+            feed_yield[yield_index][3] += 1
+            _record(item, f"{haystack} {full_text}", author)
+        print(f"  done in {time.time() - started:.0f}s", file=sys.stderr)
+    # Back into feed order, as when each entry was checked in turn: duplicate
+    # removal keeps the first copy it sees.
+    for bucket in categorized.values():
+        bucket.sort(key=lambda a: a["_seq"])
+        for article in bucket:
+            del article["_seq"]
 
     # Google News search
     if not args.no_gnews and args.gnews_query:
