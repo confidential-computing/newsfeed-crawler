@@ -11,6 +11,12 @@
   a closing line with the exit status and duration, so a killed run is visible
   in `webfeed-cron.log`.
 
+### Matching
+- Bare "SEV" counts only with AMD or virtualisation context nearby, and
+  severity levels (SEV1, SEV-2) never count. Incident-severity jargon
+  ("agent accelerated SEVs") had matched an InfoQ panel on frontend
+  architecture. SEV-SNP and SEV-ES are unaffected.
+
 ### Speed
 - Article text for entries whose title and summary don't match is now
   fetched in parallel after all feeds are read, at most 2 requests per server

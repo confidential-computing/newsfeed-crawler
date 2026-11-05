@@ -89,6 +89,29 @@ class TestAcronyms(unittest.TestCase):
         ]:
             self.assertTrue(keyword_match(text, KEYWORDS), text)
 
+    def test_incident_severity_sev_does_not_match(self):
+        for text in [
+            # InfoQ panel transcript, 2026-11-04 edition
+            "Given some of the things that have happened in Amazon recently where "
+            "there has been agent accelerated SEVs, is there anything that we're "
+            "learning about why agents can help us to make bad choices",
+            "The outage was declared a SEV1 within minutes",
+            "AWS cloud teams page on-call for any SEV-2 in software they own",
+            "We hold a blameless review after every SEV",
+        ]:
+            self.assertFalse(keyword_match(text, KEYWORDS), text)
+
+    def test_computing_sev_matches(self):
+        for text in [
+            "AMD SEV protects guest memory",
+            "Linux 7.6 improves SEV support in KVM",
+            "SEV-encrypted VMs on EPYC",
+            "a new attack on SEV guests",
+            "AMD SEV-SNP lands in QEMU",
+            "SEV-ES support for older processors",
+        ]:
+            self.assertTrue(keyword_match(text, KEYWORDS), text)
+
 
 class TestSpanishPortuguese(unittest.TestCase):
     """Feeds with lang: es / pt use the keyword lists in feeds.yaml."""

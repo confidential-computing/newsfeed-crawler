@@ -1653,6 +1653,17 @@ _SGX_RE = re.compile(r"\bSGX\b")
 _SGX_CONTEXT_RE = re.compile(
     rf"\b(?:{_CONTEXT_TERMS}|enclaves?|Linux|drivers?|side[\s-]channel|"
     r"vulnerab\w*|exploit\w*)\b", re.IGNORECASE)
+# 'SEV' is also incident-severity jargon ("SEV1", "agent accelerated SEVs").
+# Severity levels never count; bare SEV needs AMD/virtualisation context
+# close by. The shared context list is too broad here: incident write-ups are
+# full of "cloud", "AWS" and "software". SEV-SNP and SEV-ES always count.
+_SEV_SEVERITY_RE = re.compile(r"\bSEV[\s-]?[0-4]\b", re.IGNORECASE)
+_SEV_RE = re.compile(r"\bSEV(?!-[A-Za-z])s?\b")
+_SEV_CONTEXT_RE = re.compile(
+    r"\b(?:AMD|EPYC|SNP|(?-i:TEEs?|TDX|SGX|CCA)|confidential|encrypt\w*|"
+    r"attest\w*|enclaves?|VMs?|guests?|hypervisors?|virtuali[sz]\w*|KVM|QEMU|"
+    r"memory|firmware|kernel|Linux|CPUs?|processors?|vulnerab\w*)\b",
+    re.IGNORECASE)
 
 
 def _drop_without_context(word_re, context_re, text):
@@ -1719,6 +1730,8 @@ def keyword_match(text, keywords, lang="en"):
     # the patterns above can't anticipate. Intel SGX almost always has
     # computing context close by: "Intel SGX", "SGX enclave", "SGX driver".
     cleaned_text = _drop_without_context(_SGX_RE, _SGX_CONTEXT_RE, cleaned_text)
+    cleaned_text = _SEV_SEVERITY_RE.sub("", cleaned_text)
+    cleaned_text = _drop_without_context(_SEV_RE, _SEV_CONTEXT_RE, cleaned_text)
 
     for kw in keywords:
         kw = kw.strip()
