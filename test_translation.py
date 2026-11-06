@@ -74,12 +74,12 @@ class TestTranslateTitles(unittest.TestCase):
 
 class TestArticleLink(unittest.TestCase):
 
-    def test_translated_title_is_followed_by_original(self):
+    def test_translated_title_is_beside_the_original_in_one_link(self):
         a = {"title": "Microsoft expands confidential computing", "url": "https://x/1",
              "title_original": "Microsoft amplía la computación confidencial"}
         self.assertEqual(_article_link(a),
-                         "[Microsoft expands confidential computing](https://x/1) "
-                         "(original: Microsoft amplía la computación confidencial)")
+                         "[Microsoft expands confidential computing / "
+                         "Microsoft amplía la computación confidencial](https://x/1)")
 
     def test_english_title_is_a_plain_link(self):
         self.assertEqual(_article_link({"title": "T", "url": "https://x/1"}), "[T](https://x/1)")

@@ -1782,11 +1782,15 @@ def group_articles_by_story(categorized, members, use_ai=True):
 
 
 def _article_link(a):
-    """Markdown link to an article; a translated title is followed by the original."""
-    link = f"[{a['title']}]({a['url']})"
+    """
+    Markdown link to an article. A translated title is shown side by side
+    with the original, "English / original", both inside the link so readers
+    of either language can click the title they read.
+    """
+    title = a["title"]
     if a.get("title_original"):
-        link += f" (original: {a['title_original']})"
-    return link
+        title += f" / {a['title_original']}"
+    return f"[{title}]({a['url']})"
 
 
 def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, webfeed=False):

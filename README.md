@@ -75,10 +75,10 @@ python crawler.py --only-region in --only-region kr
 
 A feed sets `lang:` (e.g. `es`, `pt`; default `en`) when its articles aren't in English. Its articles are matched against the English keywords plus the language's list under the top-level `keywords:` mapping in `feeds.yaml`. Acronyms such as TEE, SGX and TDX need no translation. Some English keywords are ordinary words in another language: in Spanish and Portuguese bare "enclave" means a territorial enclave, so there only qualified forms such as "enclave seguro" count. Japanese (`ja`) is matched ignoring spaces and the katakana middle dot (・), so "コンフィデンシャル・コンピューティング" and "コンフィデンシャルコンピューティング" are the same keyword, and full-width letters (ＳＧＸ) count as ordinary ones. Acronyms match with text written straight after them ("TDXを"). Members' names as Japanese articles write them (インテル, 富士通) are listed in `MEMBER_ALIASES` in `crawler.py`.
 
-Matched non-English titles are translated into English with the `claude` CLI before deduplication and clustering, so stories are compared in one language. Reports and editions show the English title as the link, followed by the original:
+Matched non-English titles are translated into English with the `claude` CLI before deduplication and clustering, so stories are compared in one language. Reports and editions show the English and original titles side by side, English first, both inside the link so readers of either language can click the title they read:
 
 ```
-- [Microsoft expands confidential computing on Azure](https://...) (original: Microsoft amplía la computación confidencial en Azure) ...
+- [Microsoft expands confidential computing on Azure / Microsoft amplía la computación confidencial en Azure](https://...) ...
 ```
 
 Translations are cached in `translations.json` (`--translations-cache`), so each title is translated once. If translation fails, the original title is shown and a warning is printed. `--no-translate` skips translation.

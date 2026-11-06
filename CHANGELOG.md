@@ -46,7 +46,8 @@
   matched against the English keywords plus the language's own list under
   `keywords:`; in Spanish and Portuguese bare "enclave" doesn't count.
 - Non-English titles are translated into English with the claude CLI (cached
-  in `translations.json`) and shown with the original after them.
+  in `translations.json`) and shown side by side with the original, English
+  first, both inside the link: "[English / original](url)".
   `--no-translate` turns this off.
 - Article text fetched without a declared charset is decoded from the page's
   own `<meta charset>`, so accented text matches.
