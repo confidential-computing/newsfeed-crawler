@@ -58,6 +58,14 @@ keywords:
     - enclave SGX
     - enclaves SGX
     - Secure Enclave
+# Sites whose article pages are fetched one at a time with a pause between
+# requests (`polite_delay:` seconds, default 2) instead of the usual 2 at once.
+# Every hostname on the same server (IP address) is slowed too. TechDay (IT
+# Brief / SecurityBrief) blocked us on 2026-11-05 after a catch-up run
+# fetched too much from them.
+polite_hosts:
+  - itbrief.asia
+polite_delay: 2
 feeds:
   - name: The Register - Security
     url: https://www.theregister.com/security/headlines.atom
@@ -163,12 +171,14 @@ feeds:
   - name: CDOTrends
     url: https://www.cdotrends.com/rss.xml
     region: asia
-  - name: SecurityBrief Asia
-    url: https://securitybrief.asia/feed
-    region: asia
-  - name: IT Brief Asia
-    url: https://itbrief.asia/feed
-    region: asia
+  # Paused 2026-11-06: TechDay (IT Brief / SecurityBrief) has blocked our IP
+  # since 2026-11-05. Uncomment once they lift the block.
+  # - name: SecurityBrief Asia
+  #   url: https://securitybrief.asia/feed
+  #   region: asia
+  # - name: IT Brief Asia
+  #   url: https://itbrief.asia/feed
+  #   region: asia
   - name: DigiconAsia
     url: https://digiconasia.net/feed
     region: asia
@@ -276,18 +286,19 @@ feeds:
     region: au
   # The IT Brief / SecurityBrief editions share most stories with the Asia
   # editions; deduplication drops copies whose text matches.
-  - name: IT Brief Australia
-    url: https://itbrief.com.au/feed
-    region: au
-  - name: SecurityBrief Australia
-    url: https://securitybrief.com.au/feed
-    region: au
-  - name: IT Brief New Zealand
-    url: https://itbrief.co.nz/feed
-    region: nz
-  - name: SecurityBrief New Zealand
-    url: https://securitybrief.co.nz/feed
-    region: nz
+  # Paused 2026-11-06 (TechDay block, see SecurityBrief Asia above).
+  # - name: IT Brief Australia
+  #   url: https://itbrief.com.au/feed
+  #   region: au
+  # - name: SecurityBrief Australia
+  #   url: https://securitybrief.com.au/feed
+  #   region: au
+  # - name: IT Brief New Zealand
+  #   url: https://itbrief.co.nz/feed
+  #   region: nz
+  # - name: SecurityBrief New Zealand
+  #   url: https://securitybrief.co.nz/feed
+  #   region: nz
   - name: Reseller News NZ
     url: https://www.reseller.co.nz/rss/
     region: nz

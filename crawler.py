@@ -850,13 +850,16 @@ def fetch_article_text(url):
         return ""
 
 
-def fetch_article_texts(urls, workers=48, per_server=2):
+def fetch_article_texts(urls, workers=48, per_server=2, polite_hosts=(),
+                        polite_delay=2.0):
     """
     {url: article text} for *urls*, fetched in parallel. At most *per_server*
     requests go to one server (IP address) at a time, so a big feed doesn't
     hammer its site. Hosts are grouped by address because outlets share
     servers: the six IT Brief / SecurityBrief sites are one machine, which
     started answering 403 when each hostname got its own allowance.
+    The server of each host in *polite_hosts* gets one request at a time,
+    with *polite_delay* seconds between them.
     Failed fetches give "", as with fetch_article_text().
     """
     import threading
@@ -865,21 +868,28 @@ def fetch_article_texts(urls, workers=48, per_server=2):
 
     urls = list(dict.fromkeys(urls))
 
-    server_of = {}
-    for host in {urlparse(u).hostname or "" for u in urls}:
+    def resolve(host):
         try:
-            server_of[host] = socket.gethostbyname(host)
+            return socket.gethostbyname(host)
         except (OSError, UnicodeError):
-            server_of[host] = host
+            return host
+
+    server_of = {h: resolve(h) for h in {urlparse(u).hostname or "" for u in urls}}
+    polite = {resolve(h) for h in polite_hosts} | set(polite_hosts)
 
     def server(url):
         return server_of[urlparse(url).hostname or ""]
 
-    locks = {s: threading.Semaphore(per_server) for s in set(server_of.values())}
+    locks = {s: threading.Semaphore(1 if s in polite else per_server)
+             for s in set(server_of.values())}
 
     def one(url):
-        with locks[server(url)]:
-            return url, fetch_article_text(url)
+        s = server(url)
+        with locks[s]:
+            text = fetch_article_text(url)
+            if s in polite:
+                time.sleep(polite_delay)  # still holding the server's slot
+            return url, text
 
     # Interleave servers so the workers don't all queue behind one site.
     by_server = {}
@@ -2311,7 +2321,10 @@ def main():
     if needs_text:
         print(f"Checking full text of {len(needs_text)} articles...", file=sys.stderr)
         started = time.time()
-        texts = fetch_article_texts([item["url"] for item, *_ in needs_text])
+        texts = fetch_article_texts(
+            [item["url"] for item, *_ in needs_text],
+            polite_hosts=[str(h).lower() for h in (feed_config.get("polite_hosts") or [])],
+            polite_delay=float(feed_config.get("polite_delay", 2)))
         for item, haystack, author, feed_keywords, yield_index in needs_text:
             full_text = texts.get(item["url"], "")
             if not keyword_match(full_text, feed_keywords, item["lang"]):
