@@ -58,6 +58,15 @@
   break after an acronym ("TDXを"). Member names in katakana and kanji count
   as member mentions (`MEMBER_ALIASES`). A past-week test found 4 stories,
   all via Google News.
+- Korean: 20 feeds (Electronic Times, ZDNet Korea, Daily Secu, Digital
+  Today, IT Chosun, Bloter, TechM, The Elec Korean, Byline Network,
+  Datanet, iNews24, AI Times and others; Boan News, Digital Daily, Digital
+  Times and ITWorld Korea via Google News site searches; two Google News CC
+  searches), with Korean keywords, matched ignoring spaces. Korean context
+  words, member names (인텔, 삼성전자, 오페이크 ...) and "싱가포르 거래소
+  (SGX)" are handled as in Japanese. Feeds from Korean CMSs with zone-less
+  dates use `timezone: Asia/Seoul`. A past-week test found 1 story, via
+  Google News.
 
 ### Coverage
 - Spanish feeds from Spain and Latin America, Portuguese feeds from Brazil

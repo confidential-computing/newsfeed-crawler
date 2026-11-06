@@ -10,7 +10,7 @@
 #   timezone: IANA zone (e.g. Asia/Seoul) for feeds whose dates carry no
 #           zone of their own. Without it such dates are read as UTC.
 #           Dates that do state a zone are left alone.
-#   lang:   language of the feed's articles (es, pt, ja, ...; default en). Its
+#   lang:   language of the feed's articles (es, pt, ja, ko, ...; default en). Its
 #           articles are matched against the English keywords plus the
 #           language's list under `keywords:` below, and their titles are
 #           shown in English with the original after them.
@@ -80,6 +80,25 @@ keywords:
     - リモートアテステーション
     - リモート構成証明
     - 秘密計算
+  # Korean is also matched ignoring spaces: compound nouns are spaced
+  # inconsistently (기밀 컴퓨팅 / 기밀컴퓨팅).
+  ko:
+    - 기밀 컴퓨팅
+    - 컨피덴셜 컴퓨팅
+    - 기밀 연산
+    - 기밀 AI
+    - 컨피덴셜 AI
+    - 기밀 가상머신
+    - 기밀 가상 머신
+    - 기밀 VM
+    - 컨피덴셜 VM
+    - 기밀 컨테이너
+    - 컨피덴셜 컨테이너
+    - 신뢰 실행 환경
+    - 신뢰할 수 있는 실행 환경
+    - 보안 엔클레이브
+    - 엔클레이브
+    - 원격 증명
 # Sites whose article pages are fetched one at a time with a pause between
 # requests (`polite_delay:` seconds, default 2) instead of the usual 2 at once.
 # Every hostname on the same server (IP address) is slowed too. TechDay (IT
@@ -609,3 +628,91 @@ feeds:
   - name: Google News CC - Japanese related terms
     url: https://news.google.com/rss/search?q=%22%E7%A7%98%E5%AF%86%E8%A8%88%E7%AE%97%22%20OR%20%22%E4%BF%A1%E9%A0%BC%E3%81%A7%E3%81%8D%E3%82%8B%E5%AE%9F%E8%A1%8C%E7%92%B0%E5%A2%83%22%20OR%20%22Intel%20TDX%22%20OR%20%22AMD%20SEV%22%20OR%20%22Intel%20SGX%22%20OR%20%22Arm%20CCA%22%20OR%20%22%E3%83%AA%E3%83%A2%E3%83%BC%E3%83%88%E3%82%A2%E3%83%86%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%22%20when%3A7d&hl=ja&gl=JP&ceid=JP:ja
     lang: ja
+  # --- Korean (lang: ko) ---
+  # Many Korean CMS feeds (allArticle.xml) give Korean time with no zone.
+  # Boan News, Digital Daily, Digital Times and ITWorld Korea have no working
+  # feed, so they come via Google News site searches for CC terms.
+  - name: 전자신문
+    url: https://rss.etnews.com/Section901.xml
+    region: kr
+    lang: ko
+  - name: ZDNet Korea
+    url: https://feeds.feedburner.com/zdkorea
+    region: kr
+    lang: ko
+  - name: 데일리시큐
+    url: https://www.dailysecu.com/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: 디지털투데이
+    url: https://www.digitaltoday.co.kr/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: IT조선
+    url: https://it.chosun.com/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: 블로터
+    url: https://www.bloter.net/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: 테크M
+    url: https://www.techm.kr/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: 디일렉
+    url: https://www.thelec.kr/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: 바이라인네트워크
+    url: https://byline.network/feed/
+    region: kr
+    lang: ko
+  - name: 컴퓨터월드
+    url: https://www.comworld.co.kr/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: 데이터넷
+    url: https://www.datanet.co.kr/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: 아이뉴스24 IT
+    url: https://www.inews24.com/rss/news_it.xml
+    region: kr
+    lang: ko
+  - name: 인공지능신문
+    url: https://www.aitimes.kr/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: AI타임스
+    url: https://www.aitimes.com/rss/allArticle.xml
+    region: kr
+    lang: ko
+    timezone: Asia/Seoul
+  - name: 보안뉴스 (via Google News)
+    url: https://news.google.com/rss/search?q=site%3Aboannews.com%20%28%22%EA%B8%B0%EB%B0%80%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EA%B8%B0%EB%B0%80%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%BB%A8%ED%94%BC%EB%8D%B4%EC%85%9C%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%8B%A0%EB%A2%B0%20%EC%8B%A4%ED%96%89%20%ED%99%98%EA%B2%BD%22%20OR%20%22%EC%97%94%ED%81%B4%EB%A0%88%EC%9D%B4%EB%B8%8C%22%20OR%20TEE%20OR%20SGX%20OR%20TDX%20OR%20SEV%20OR%20%22confidential%20computing%22%29%20when%3A7d&hl=ko&gl=KR&ceid=KR:ko
+    lang: ko
+  - name: 디지털데일리 (via Google News)
+    url: https://news.google.com/rss/search?q=site%3Addaily.co.kr%20%28%22%EA%B8%B0%EB%B0%80%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EA%B8%B0%EB%B0%80%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%BB%A8%ED%94%BC%EB%8D%B4%EC%85%9C%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%8B%A0%EB%A2%B0%20%EC%8B%A4%ED%96%89%20%ED%99%98%EA%B2%BD%22%20OR%20%22%EC%97%94%ED%81%B4%EB%A0%88%EC%9D%B4%EB%B8%8C%22%20OR%20TEE%20OR%20SGX%20OR%20TDX%20OR%20SEV%20OR%20%22confidential%20computing%22%29%20when%3A7d&hl=ko&gl=KR&ceid=KR:ko
+    lang: ko
+  - name: 디지털타임스 (via Google News)
+    url: https://news.google.com/rss/search?q=site%3Adt.co.kr%20%28%22%EA%B8%B0%EB%B0%80%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EA%B8%B0%EB%B0%80%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%BB%A8%ED%94%BC%EB%8D%B4%EC%85%9C%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%8B%A0%EB%A2%B0%20%EC%8B%A4%ED%96%89%20%ED%99%98%EA%B2%BD%22%20OR%20%22%EC%97%94%ED%81%B4%EB%A0%88%EC%9D%B4%EB%B8%8C%22%20OR%20TEE%20OR%20SGX%20OR%20TDX%20OR%20SEV%20OR%20%22confidential%20computing%22%29%20when%3A7d&hl=ko&gl=KR&ceid=KR:ko
+    lang: ko
+  - name: ITWorld Korea (via Google News)
+    url: https://news.google.com/rss/search?q=site%3Aitworld.co.kr%20%28%22%EA%B8%B0%EB%B0%80%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EA%B8%B0%EB%B0%80%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%BB%A8%ED%94%BC%EB%8D%B4%EC%85%9C%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%8B%A0%EB%A2%B0%20%EC%8B%A4%ED%96%89%20%ED%99%98%EA%B2%BD%22%20OR%20%22%EC%97%94%ED%81%B4%EB%A0%88%EC%9D%B4%EB%B8%8C%22%20OR%20TEE%20OR%20SGX%20OR%20TDX%20OR%20SEV%20OR%20%22confidential%20computing%22%29%20when%3A7d&hl=ko&gl=KR&ceid=KR:ko
+    lang: ko
+  - name: Google News CC - Korean
+    url: https://news.google.com/rss/search?q=%22%EA%B8%B0%EB%B0%80%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EA%B8%B0%EB%B0%80%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%BB%A8%ED%94%BC%EB%8D%B4%EC%85%9C%20%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EC%BB%A8%ED%94%BC%EB%8D%B4%EC%85%9C%EC%BB%B4%ED%93%A8%ED%8C%85%22%20OR%20%22%EA%B8%B0%EB%B0%80%20AI%22%20OR%20%22%EC%BB%A8%ED%94%BC%EB%8D%B4%EC%85%9C%20AI%22%20when%3A7d&hl=ko&gl=KR&ceid=KR:ko
+    lang: ko
+  - name: Google News CC - Korean related terms
+    url: https://news.google.com/rss/search?q=%22%EC%8B%A0%EB%A2%B0%20%EC%8B%A4%ED%96%89%20%ED%99%98%EA%B2%BD%22%20OR%20%22%EC%8B%A0%EB%A2%B0%EC%8B%A4%ED%96%89%ED%99%98%EA%B2%BD%22%20OR%20%22%EB%B3%B4%EC%95%88%20%EC%97%94%ED%81%B4%EB%A0%88%EC%9D%B4%EB%B8%8C%22%20OR%20%22%EC%9D%B8%ED%85%94%20TDX%22%20OR%20%22%EC%9D%B8%ED%85%94%20SGX%22%20OR%20%22AMD%20SEV%22%20OR%20%22Arm%20CCA%22%20OR%20%22%EC%9B%90%EA%B2%A9%20%EC%A6%9D%EB%AA%85%22%20when%3A7d&hl=ko&gl=KR&ceid=KR:ko
+    lang: ko

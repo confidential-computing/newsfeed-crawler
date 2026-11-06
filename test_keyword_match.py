@@ -193,6 +193,29 @@ class TestJapanese(unittest.TestCase):
         self.assertTrue(keyword_match("Intel TDX-based VMs", KEYWORDS))
 
 
+class TestKorean(unittest.TestCase):
+
+    def ko(self, text):
+        return keyword_match(text, keywords_for_language(KEYWORDS, LANGUAGE_KEYWORDS, "ko"), "ko")
+
+    def test_acronyms_followed_by_particles_match(self):
+        for text in ["인텔은 SGX를 지원한다", "TDX와 SEV-SNP 기반", "TEE에서 실행되는 AI"]:
+            self.assertTrue(self.ko(text), text)
+
+    def test_korean_terms_match_with_or_without_spaces(self):
+        for text in ["기밀 컴퓨팅을 도입", "기밀컴퓨팅 기술", "신뢰실행환경(TEE)",
+                     "컨피덴셜 AI 서비스", "보안 엔클레이브에 저장"]:
+            self.assertTrue(self.ko(text), text)
+
+    def test_singapore_exchange_is_not_sgx(self):
+        self.assertFalse(self.ko("싱가포르 거래소(SGX)에 상장"))
+        self.assertFalse(self.ko("SGX 실적 발표"))
+        self.assertTrue(self.ko("인텔 SGX 취약점"))
+
+    def test_unrelated_korean_text_does_not_match(self):
+        self.assertFalse(self.ko("새 스마트폰이 출시되었다"))
+
+
 class TestMemberAliases(unittest.TestCase):
 
     MEMBERS = ["Intel Corporation", "Hewlett Packard Enterprise", "Fujitsu Limited",
@@ -208,8 +231,14 @@ class TestMemberAliases(unittest.TestCase):
         summary = '<a href="https://news.google.com/rss/articles/x">秘密計算の記事</a>'
         self.assertIsNone(is_about_member(summary, self.MEMBERS + ["Google LLC"]))
 
+    def test_korean_names(self):
+        self.assertEqual(is_about_member("인텔이 발표했다", self.MEMBERS), "Intel Corporation")
+        self.assertEqual(is_about_member("휴렛팩커드엔터프라이즈", self.MEMBERS),
+                         "Hewlett Packard Enterprise")
+
     def test_ambiguous_names_are_not_aliased(self):
         self.assertIsNone(is_about_member("ロボットアームの新製品", self.MEMBERS))
+        self.assertIsNone(is_about_member("메타버스 플랫폼", self.MEMBERS + ["Meta Platforms, Inc."]))
 
 
 if __name__ == "__main__":

@@ -433,28 +433,30 @@ def is_by_member(feed_name, author, members):
 
 # Members' names as non-English articles write them, keyed by
 # clean_member_name(). Matched ignoring spaces and the katakana middle dot.
-# Ambiguous transliterations are left out: アーム (Arm; also any robot
-# "arm"), メタ (Meta; "meta-"), マーベル (Marvell; Marvel), アンペア
-# (Ampere; the unit).
+# Ambiguous transliterations are left out: アーム/암 (Arm; also any robot
+# "arm"), メタ/메타 (Meta; "meta-", 메타버스), マーベル/마벨 (Marvell;
+# Marvel), アンペア (Ampere; the unit), 삼성 alone (the whole group).
 MEMBER_ALIASES = {
-    "intel": ["インテル"],
-    "microsoft": ["マイクロソフト"],
-    "google": ["グーグル"],
-    "nvidia": ["エヌビディア"],
-    "qualcomm": ["クアルコム"],
-    "samsung electronics": ["サムスン"],
-    "huawei technologies co., ltd": ["ファーウェイ", "華為", "华为"],
-    "cisco": ["シスコ"],
-    "red hat": ["レッドハット"],
-    "fujitsu": ["富士通"],
-    "hewlett packard enterprise": ["ヒューレット・パッカード・エンタープライズ"],
-    "canonical": ["カノニカル"],
+    "intel": ["インテル", "인텔"],
+    "microsoft": ["マイクロソフト", "마이크로소프트"],
+    "google": ["グーグル", "구글"],
+    "nvidia": ["エヌビディア", "엔비디아"],
+    "qualcomm": ["クアルコム", "퀄컴"],
+    "samsung electronics": ["サムスン", "삼성전자"],
+    "huawei technologies co., ltd": ["ファーウェイ", "華為", "华为", "화웨이"],
+    "cisco": ["シスコ", "시스코"],
+    "red hat": ["レッドハット", "레드햇"],
+    "fujitsu": ["富士通", "후지쯔", "후지츠"],
+    "hewlett packard enterprise": ["ヒューレット・パッカード・エンタープライズ",
+                                   "휴렛팩커드 엔터프라이즈"],
+    "canonical": ["カノニカル", "캐노니컬"],
     "linaro": ["リナロ"],
     "eaglys": ["イーグリス"],
-    "tiktok": ["ティックトック"],
-    "jpmorgan chase bank, national association": ["JPモルガン"],
+    "tiktok": ["ティックトック", "틱톡"],
+    "jpmorgan chase bank, national association": ["JPモルガン", "JP모건"],
     "volcano engine": ["火山引擎"],
     "shanghai jiao tong university": ["上海交通大学"],
+    "opaque": ["오페이크"],
 }
 
 
@@ -1858,11 +1860,13 @@ _CONTEXT_TERMS = (
     r"silicon|firmware|hardware|software|memory|iPhones?|Apple|Intel|AMD|"
     r"Azure|AWS|cloud|comput\w*|technolog\w*|keys|isolat\w*|privacy|"
     r"workloads?|VMs?|virtual|kernel|Open\s?Enclave|Gramine|Occlum")
-# The same in Japanese: Intel, enclave, encryption, confidential, secure,
-# processor, memory, attestation, virtual(isation), cloud, vulnerability.
+# The same in Japanese and Korean: Intel, enclave, encryption, confidential,
+# secure, processor, memory, attestation, virtual(isation), cloud,
+# vulnerability.
 _CONTEXT_TERMS_JA = (
     r"インテル|エンクレーブ|暗号|機密|セキュア|プロセッサ|メモリ|アテステーション|"
-    r"仮想|クラウド|脆弱性")
+    r"仮想|クラウド|脆弱性|"
+    r"인텔|엔클레이브|암호|기밀|보안|프로세서|메모리|증명|가상|클라우드|취약점")
 _ENCLAVE_CONTEXT_RE = re.compile(
     rf"{_WB}(?:{_CONTEXT_TERMS}|(?-i:SGX)){_WE}|{_CONTEXT_TERMS_JA}", re.IGNORECASE)
 _SGX_RE = re.compile(rf"{_WB}SGX{_WE}")
@@ -1879,7 +1883,7 @@ _SEV_CONTEXT_RE = re.compile(
     rf"{_WB}(?:AMD|EPYC|SNP|(?-i:TEEs?|TDX|SGX|CCA)|confidential|encrypt\w*|"
     r"attest\w*|enclaves?|VMs?|guests?|hypervisors?|virtuali[sz]\w*|KVM|QEMU|"
     rf"memory|firmware|kernel|Linux|CPUs?|processors?|vulnerab\w*){_WE}|"
-    r"機密|暗号|仮想|メモリ|プロセッサ|脆弱性",
+    r"機密|暗号|仮想|メモリ|プロセッサ|脆弱性|기밀|암호|가상|메모리|프로세서|취약점",
     re.IGNORECASE)
 
 
@@ -1921,11 +1925,12 @@ def keywords_for_language(english, extra, lang):
         [str(k).strip() for k in (extra or {}).get(lang) or [] if str(k).strip()]
 
 
-# Languages written without spaces between words. Their keywords are matched
-# ignoring spaces and the katakana middle dot, so "コンフィデンシャル・
-# コンピューティング" and "コンフィデンシャル コンピューティング" both match
-# a keyword written either way.
-_SPACELESS_LANGS = {"ja", "zh"}
+# Languages whose keywords are matched ignoring spaces and the katakana
+# middle dot. Japanese and Chinese are written without spaces between words,
+# so "コンフィデンシャル・コンピューティング" and "コンフィデンシャル
+# コンピューティング" both match a keyword written either way. Korean spaces
+# compound nouns inconsistently: "기밀 컴퓨팅" and "기밀컴퓨팅".
+_SPACELESS_LANGS = {"ja", "zh", "ko"}
 _SQUEEZE_RE = re.compile(r"[\s・]+")
 
 
@@ -1940,6 +1945,7 @@ def keyword_match(text, keywords, lang="en"):
         rf"{_WB}Singapore\s+Exchange\s*\(?\s*SGX\s*\)?",
         rf"{_WB}SGX\s*\(?\s*Singapore\s+Exchange\s*\)?",
         r"シンガポール取引所\s*[（(]?\s*SGX\s*[)）]?",
+        r"싱가포르\s*거래소\s*[（(]?\s*SGX\s*[)）]?",
     ]
     # Full-width letters (ＳＧＸ) and half-width katakana become ordinary ones.
     text = unicodedata.normalize("NFKC", text)
@@ -1949,7 +1955,8 @@ def keyword_match(text, keywords, lang="en"):
         cleaned_text = re.sub(pattern, "", cleaned_text, flags=re.IGNORECASE)
 
     # If the text is clearly about the Singapore Exchange, drop bare 'SGX' too
-    if re.search(r"singapore\s+exchange|シンガポール取引所", text, flags=re.IGNORECASE):
+    if re.search(r"singapore\s+exchange|シンガポール取引所|싱가포르\s*거래소", text,
+                 flags=re.IGNORECASE):
         cleaned_text = _SGX_RE.sub("", cleaned_text)
 
     # In general news 'enclave' is far more often a territory (Gaza, Ceuta,
