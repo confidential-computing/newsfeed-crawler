@@ -27,6 +27,14 @@
   this takes ~9 minutes instead of an estimated 6-9 hours. The report is
   unchanged: entries keep their feed order, so duplicate removal keeps the
   same copy.
+- The hourly `--store-only` run now also fetches and saves the article text
+  that the weekly run would check (`feed-store/texts/`, kept 14 days), at
+  most 1,500 articles per run. The weekly run takes text from there and
+  fetches only what's missing, so it takes minutes and spreads the load on
+  each site across the week.
+- `polite_hosts:` / `polite_delay:` in feeds.yaml: article fetches to a
+  listed site's server go one at a time with a pause. Used for TechDay
+  (IT Brief / SecurityBrief), whose feeds are paused after it blocked us.
 - `python-dateutil` added to requirements.txt.
 
 ### Languages

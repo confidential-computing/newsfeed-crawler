@@ -13,7 +13,11 @@ import feedparser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from crawler import EntryStore, entry_datetime, localise_naive_dates, merge_stored_entries
+import argparse
+
+import crawler
+from crawler import (EntryStore, TextStore, entry_datetime, localise_naive_dates,
+                     merge_stored_entries, store_article_texts, text_store_dir)
 
 FEED = "https://example.com/feed"
 NOW = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
@@ -89,6 +93,104 @@ class TestEntryStore(unittest.TestCase):
         store.prune(NOW)
         self.assertEqual([e["link"] for e in EntryStore(self.dir).load().entries_for(FEED)],
                          ["https://x/new"])
+
+
+class TestTextStore(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_round_trip_survives_reload(self):
+        TextStore(self.dir).save({"https://a/1": "Intel TDX text ü"}, NOW)
+        self.assertEqual(TextStore(self.dir).load().get("https://a/1"), "Intel TDX text ü")
+        self.assertIsNone(TextStore(self.dir).load().get("https://a/2"))
+
+    def test_failures_are_retried_then_given_up(self):
+        store = TextStore(self.dir)
+        for i in range(TextStore.MAX_TRIES):
+            self.assertTrue(store.needs_fetch("https://a/1"))
+            store.save({"https://a/1": ""}, NOW + timedelta(hours=i))
+        reloaded = TextStore(self.dir).load()
+        self.assertFalse(reloaded.needs_fetch("https://a/1"))
+        self.assertEqual(reloaded.get("https://a/1"), "")
+
+    def test_later_success_replaces_failure(self):
+        store = TextStore(self.dir)
+        store.save({"https://a/1": ""}, NOW)
+        store.save({"https://a/1": "text"}, NOW + timedelta(hours=1))
+        self.assertEqual(TextStore(self.dir).load().get("https://a/1"), "text")
+
+    def test_read_only_saves_nothing(self):
+        TextStore(self.dir, read_only=True).save({"https://a/1": "x"}, NOW)
+        self.assertIsNone(TextStore(self.dir).load().get("https://a/1"))
+
+    def test_prune_removes_old_days(self):
+        store = TextStore(self.dir, keep_days=14)
+        store.save({"https://a/old": "x"}, NOW - timedelta(days=20))
+        store.save({"https://a/new": "y"}, NOW)
+        store.prune(NOW)
+        reloaded = TextStore(self.dir).load()
+        self.assertIsNone(reloaded.get("https://a/old"))
+        self.assertEqual(reloaded.get("https://a/new"), "y")
+
+
+class TestStoreArticleTexts(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+        self.fetched = []
+
+        def fake_fetch(urls, **kwargs):
+            self.fetched.append(list(urls))
+            return {u: f"text of {u}" for u in urls}
+        self.real_fetch = crawler.fetch_article_texts
+        crawler.fetch_article_texts = fake_fetch
+
+    def tearDown(self):
+        crawler.fetch_article_texts = self.real_fetch
+        self.tmp.cleanup()
+
+    def run_store(self, entries, now=NOW):
+        args = argparse.Namespace(entry_store=self.dir, keywords="confidential computing,TDX")
+        config = {"feeds": [{"url": FEED}]}
+        store = EntryStore(self.dir).load()
+        store.add(FEED, entries, now)
+        return store_article_texts(args, config, store, now)
+
+    def test_fetches_only_entries_without_a_title_match(self):
+        matched = entry("https://a/match")
+        matched["title"] = "Intel TDX news"
+        self.assertEqual(self.run_store([matched, entry("https://a/other")]), (1, 0))
+        self.assertEqual(self.fetched, [["https://a/other"]])
+        texts = TextStore(text_store_dir(self.dir)).load()
+        self.assertEqual(texts.get("https://a/other"), "text of https://a/other")
+
+    def test_google_news_links_are_not_fetched(self):
+        self.assertEqual(self.run_store([entry("https://news.google.com/rss/articles/x")]), (0, 0))
+
+    def test_second_run_fetches_nothing_new(self):
+        self.run_store([entry("https://a/1")])
+        self.assertEqual(self.run_store([entry("https://a/1")], NOW + timedelta(hours=1)), (0, 0))
+
+    def test_entries_first_seen_long_ago_are_skipped(self):
+        store = EntryStore(self.dir)
+        store.add(FEED, [entry("https://a/old")], NOW - timedelta(days=10))
+        self.assertEqual(self.run_store([]), (0, 0))
+
+    def test_backlog_is_capped_per_run(self):
+        real_cap = crawler.TEXT_FETCHES_PER_STORE_RUN
+        crawler.TEXT_FETCHES_PER_STORE_RUN = 2
+        try:
+            entries = [entry(f"https://a/{i}") for i in range(5)]
+            self.assertEqual(self.run_store(entries), (2, 3))
+            self.assertEqual(self.run_store([], NOW + timedelta(hours=1)), (2, 1))
+        finally:
+            crawler.TEXT_FETCHES_PER_STORE_RUN = real_cap
 
 
 class TestFeedTimezone(unittest.TestCase):

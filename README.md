@@ -97,6 +97,8 @@ python crawler.py --no-entry-store
 
 If the filesystem holding the store is more than 80% full (`--entry-store-disk-limit`), nothing new is saved: `--store-only` logs an error, removes expired days and exits with status 2 without fetching, and normal runs log the error but still read the stored entries.
 
+`--store-only` also fetches the article text of recently stored entries (first seen in the last 8 days) whose title, summary and tags don't match, and saves it to `feed-store/texts/` (compressed, kept for 14 days). Normal runs take full text from there and fetch only what's missing, so the weekly run no longer fetches ~10,000 pages in one go. A failed fetch is retried by later runs, up to 3 tries in all. Each run fetches at most 1,500 articles, so a backlog is spread over several hours. `--no-fetch-articles` turns this off.
+
 The store-only output lists how far back each feed reaches. If a feed's oldest entry is newer than the time between runs, the runs aren't frequent enough to catch all of its items.
 
 At the end of each run a per-feed yield table (entries live+stored / in window / matched) is printed to stderr, which is useful when judging whether a new feed earns its place.

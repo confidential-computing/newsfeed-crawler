@@ -707,6 +707,146 @@ class EntryStore:
                     os.remove(path)
 
 
+# Article text fetched by the hourly --store-only runs, so the weekly crawl
+# doesn't fetch ~10,000 pages at once (the 2026-11-05 run did, and was killed
+# mid-way by a reboot). Only text is cached; matching still runs at crawl
+# time, so keyword changes apply to cached text too.
+TEXT_STORE_KEEP_DAYS = 14
+# Store runs fetch text for entries first seen this recently: an edition's
+# week plus a day of slack.
+TEXT_STORE_LOOKBACK_DAYS = 8
+# Most new entries per hourly run is ~100; the cap spreads a backlog (first
+# run, or after an outage) over several runs instead of one burst.
+TEXT_FETCHES_PER_STORE_RUN = 1500
+
+
+class TextStore:
+    """
+    Fetched article text by URL: one JSON-lines file per UTC day of
+    fetching under *directory*, text zlib-compressed. The latest record for
+    a URL wins. A failed fetch is saved as empty text and retried by later
+    runs up to MAX_TRIES times in all; after that it counts as no text.
+    """
+
+    MAX_TRIES = 3
+
+    def __init__(self, directory, keep_days=TEXT_STORE_KEEP_DAYS, read_only=False):
+        self.directory = directory
+        self.keep_days = keep_days
+        self.read_only = read_only
+        self.records = {}  # url -> {"url", "fetched", "tries", "z"}
+        os.makedirs(directory, exist_ok=True)
+
+    def _files(self):
+        for name in sorted(os.listdir(self.directory)):
+            m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})\.jsonl", name)
+            if m:
+                yield m.group(1), os.path.join(self.directory, name)
+
+    def _lock(self):
+        import fcntl
+        f = open(os.path.join(self.directory, ".lock"), "w")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        return f
+
+    def load(self):
+        with self._lock():
+            for _, path in self._files():
+                with open(path) as f:
+                    for line in f:
+                        try:
+                            rec = json.loads(line)
+                        except ValueError:
+                            continue  # a line cut short by a crash
+                        self.records[rec["url"]] = rec
+        return self
+
+    @staticmethod
+    def _text(rec):
+        import base64
+        import zlib
+        return zlib.decompress(base64.b64decode(rec["z"])).decode("utf-8") if rec["z"] else ""
+
+    def get(self, url):
+        """The saved text, "" if every try failed, or None to fetch it now."""
+        rec = self.records.get(url)
+        if rec is None:
+            return None
+        if rec["z"] or rec["tries"] >= self.MAX_TRIES:
+            return self._text(rec)
+        return None
+
+    def needs_fetch(self, url):
+        return self.get(url) is None
+
+    def save(self, texts, now):
+        """Save {url: text}; empty text is a failed try."""
+        import base64
+        import zlib
+        if self.read_only or not texts:
+            return
+        lines = []
+        for url, text in texts.items():
+            prev = self.records.get(url)
+            rec = {"url": url, "fetched": now.isoformat(),
+                   "tries": (prev["tries"] if prev else 0) + 1,
+                   "z": base64.b64encode(zlib.compress(text.encode("utf-8"))).decode("ascii")
+                        if text else ""}
+            self.records[url] = rec
+            lines.append(json.dumps(rec) + "\n")
+        with self._lock(), open(os.path.join(
+                self.directory, f"{now:%Y-%m-%d}.jsonl"), "a") as f:
+            f.writelines(lines)
+
+    def prune(self, now):
+        oldest = (now - timedelta(days=self.keep_days)).strftime("%Y-%m-%d")
+        with self._lock():
+            for day, path in self._files():
+                if day < oldest:
+                    os.remove(path)
+
+
+def text_store_dir(entry_store):
+    return os.path.join(entry_store, "texts")
+
+
+def polite_fetch_options(feed_config):
+    """fetch_article_texts() keyword arguments from feeds.yaml."""
+    return {"polite_hosts": [str(h).lower() for h in (feed_config.get("polite_hosts") or [])],
+            "polite_delay": float(feed_config.get("polite_delay", 2))}
+
+
+def store_article_texts(args, feed_config, store, now):
+    """
+    Fetch and save the article text of recently stored entries that don't
+    match on title, summary or tags: the ones the weekly crawl would check
+    against full text. Returns (fetched, still to fetch).
+    """
+    keywords = [k.strip() for k in args.keywords.split(",") if k.strip()]
+    language_keywords = feed_config.get("keywords") or {}
+    texts = TextStore(text_store_dir(args.entry_store)).load()
+    since = now - timedelta(days=TEXT_STORE_LOOKBACK_DAYS)
+    todo = []  # (first seen, url)
+    for feed_def in feed_config.get("feeds", []):
+        lang = str(feed_def.get("lang") or "en").lower()
+        feed_keywords = keywords_for_language(keywords, language_keywords, lang)
+        for rec in store.entries_for(feed_def["url"]):
+            link = rec["link"]
+            if (not link or rec["seen"] < since.isoformat() or _host(link) in _AGGREGATOR_HOSTS
+                    or not texts.needs_fetch(link)):
+                continue
+            haystack = f"{rec['title']} {rec['summary']} {' '.join(rec['tags'])}"
+            if keyword_match(haystack, feed_keywords, lang):
+                continue
+            todo.append((rec["seen"], link))
+    urls = list(dict.fromkeys(u for _, u in sorted(todo, reverse=True)))
+    batch = urls[:TEXT_FETCHES_PER_STORE_RUN]
+    if batch:
+        texts.save(fetch_article_texts(batch, **polite_fetch_options(feed_config)), now)
+    texts.prune(now)
+    return len(batch), len(urls) - len(batch)
+
+
 def merge_stored_entries(live, stored, start_dt):
     """
     Live entries plus the stored ones the feed no longer shows. An undated
@@ -727,7 +867,8 @@ def merge_stored_entries(live, stored, start_dt):
 def store_only(args, now):
     """Fetch every feed and save new entries; no matching or report."""
     with open(args.feeds) as f:
-        feeds = yaml.safe_load(f).get("feeds", [])
+        feed_config = yaml.safe_load(f)
+    feeds = feed_config.get("feeds", [])
     store = EntryStore(args.entry_store, args.entry_store_days)
     if store_disk_full(args):
         # Pruning only frees space, so still drop expired days.
@@ -760,6 +901,11 @@ def store_only(args, now):
         print(f"  {name:<40} {len(parsed.entries):>7} {new:>5}  {span}", file=sys.stderr)
     store.prune(now)
     print(f"[store] Done: {len(feeds) - failed} feeds fetched, {failed} failed.", file=sys.stderr)
+    if not args.no_fetch_articles:
+        started = time.time()
+        fetched, left = store_article_texts(args, feed_config, store, now)
+        print(f"[store] Article text: fetched {fetched} in {time.time() - started:.0f}s"
+              + (f", {left} left for later runs" if left else "") + ".", file=sys.stderr)
     return 1 if failed == len(feeds) else 0
 
 
@@ -867,6 +1013,9 @@ def fetch_article_texts(urls, workers=48, per_server=2, polite_hosts=(),
     from urllib.parse import urlparse
 
     urls = list(dict.fromkeys(urls))
+    # Google News links lead to a consent page, never the article.
+    unfetchable = {u for u in urls if (urlparse(u).hostname or "") in _AGGREGATOR_HOSTS}
+    urls = [u for u in urls if u not in unfetchable]
 
     def resolve(host):
         try:
@@ -900,7 +1049,7 @@ def fetch_article_texts(urls, workers=48, per_server=2, polite_hosts=(),
              for q in queues if i < len(q)]
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        return dict(pool.map(one, order))
+        return {**dict.fromkeys(unfetchable, ""), **dict(pool.map(one, order))}
 
 
 _TITLE_VERBS = {
@@ -2321,10 +2470,19 @@ def main():
     if needs_text:
         print(f"Checking full text of {len(needs_text)} articles...", file=sys.stderr)
         started = time.time()
-        texts = fetch_article_texts(
-            [item["url"] for item, *_ in needs_text],
-            polite_hosts=[str(h).lower() for h in (feed_config.get("polite_hosts") or [])],
-            polite_delay=float(feed_config.get("polite_delay", 2)))
+        # Most of the text was fetched by the hourly store runs.
+        text_store = None if args.no_entry_store else TextStore(
+            text_store_dir(args.entry_store), read_only=store.read_only).load()
+        urls = [item["url"] for item, *_ in needs_text]
+        texts = {}
+        if text_store:
+            texts = {u: t for u in urls if (t := text_store.get(u)) is not None}
+        missing = [u for u in urls if u not in texts]
+        print(f"  {len(texts)} from the text store, fetching {len(missing)}", file=sys.stderr)
+        fetched = fetch_article_texts(missing, **polite_fetch_options(feed_config))
+        if text_store:
+            text_store.save(fetched, crawl_time)
+        texts.update(fetched)
         for item, haystack, author, feed_keywords, yield_index in needs_text:
             full_text = texts.get(item["url"], "")
             if not keyword_match(full_text, feed_keywords, item["lang"]):
