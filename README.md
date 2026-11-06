@@ -108,7 +108,7 @@ At the end of each run a per-feed yield table (entries live+stored / in window /
 `webfeed-due.sh` runs hourly from cron:
 
 ```
-0 * * * * /home/mike/Projects/CC-news-crawler/webfeed-due.sh >/dev/null 2>&1
+0 * * * * /path/to/newsfeed-crawler/webfeed-due.sh >/dev/null 2>&1
 ```
 
 It starts `webfeed-run.sh` (which runs `crawler.py --webfeed --webfeed-exclude-uk`) when no edition has been written since the most recent Thursday 13:00 UTC, according to `last_run_at` in `.webfeed-state.json`. A run that was missed because the machine was off, or that was killed or failed, is therefore retried at the next hour until an edition is written. A late edition resumes from the previous edition's cutoff, so nothing is dropped or repeated. A lock (`.webfeed.lock`) stops a second run from starting while a slow run is still going.
