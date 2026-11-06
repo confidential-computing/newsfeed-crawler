@@ -204,6 +204,10 @@ class TestMemberAliases(unittest.TestCase):
         self.assertEqual(is_about_member("ヒューレット パッカード エンタープライズ",
                                          self.MEMBERS), "Hewlett Packard Enterprise")
 
+    def test_links_in_html_summaries_do_not_count(self):
+        summary = '<a href="https://news.google.com/rss/articles/x">秘密計算の記事</a>'
+        self.assertIsNone(is_about_member(summary, self.MEMBERS + ["Google LLC"]))
+
     def test_ambiguous_names_are_not_aliased(self):
         self.assertIsNone(is_about_member("ロボットアームの新製品", self.MEMBERS))
 

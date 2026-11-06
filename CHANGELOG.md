@@ -12,6 +12,10 @@
   in `webfeed-cron.log`.
 
 ### Matching
+- Links in Google News summaries no longer count as a mention of Google.
+  Every Google News entry that named no earlier-listed member was filed as
+  "about Google" (1,109 of 1,633 matching stored entries), which moved it
+  up the edition and left it out of the subjects file.
 - Bare "SEV" counts only with AMD or virtualisation context nearby, and
   severity levels (SEV1, SEV-2) never count. Incident-severity jargon
   ("agent accelerated SEVs") had matched an InfoQ panel on frontend

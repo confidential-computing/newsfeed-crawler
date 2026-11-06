@@ -459,7 +459,9 @@ MEMBER_ALIASES = {
 
 
 def is_about_member(haystack, members):
-    text = haystack.lower()
+    # Google News summaries are HTML whose links contain "news.google.com",
+    # which made every such entry "about" Google.
+    text = re.sub(r"<[^>]*>|https?://\S+", " ", haystack).lower()
     
     # First check standard member names
     for m in members:
