@@ -10,7 +10,7 @@
 #   timezone: IANA zone (e.g. Asia/Seoul) for feeds whose dates carry no
 #           zone of their own. Without it such dates are read as UTC.
 #           Dates that do state a zone are left alone.
-#   lang:   language of the feed's articles (es, pt, ...; default en). Its
+#   lang:   language of the feed's articles (es, pt, ja, ...; default en). Its
 #           articles are matched against the English keywords plus the
 #           language's list under `keywords:` below, and their titles are
 #           shown in English with the original after them.
@@ -58,6 +58,28 @@ keywords:
     - enclave SGX
     - enclaves SGX
     - Secure Enclave
+  # Japanese is matched ignoring spaces and ・, so each term is listed once.
+  # 秘密計算 ("secret computation") covers TEEs and also MPC and homomorphic
+  # encryption; Acompany and EAGLYS use it for their CC work.
+  ja:
+    - 機密コンピューティング
+    - コンフィデンシャルコンピューティング
+    - 機密AI
+    - コンフィデンシャルAI
+    - 機密仮想マシン
+    - 機密VM
+    - コンフィデンシャルVM
+    - 機密コンテナ
+    - コンフィデンシャルコンテナ
+    - 信頼できる実行環境
+    - 信頼された実行環境
+    - 信頼実行環境
+    - トラステッド実行環境
+    - セキュアエンクレーブ
+    - エンクレーブ
+    - リモートアテステーション
+    - リモート構成証明
+    - 秘密計算
 # Sites whose article pages are fetched one at a time with a pause between
 # requests (`polite_delay:` seconds, default 2) instead of the usual 2 at once.
 # Every hostname on the same server (IP address) is slowed too. TechDay (IT
@@ -507,3 +529,83 @@ feeds:
   - name: Google News CC - Portuguese (Portugal)
     url: https://news.google.com/rss/search?q=%22computa%C3%A7%C3%A3o+confidencial%22+OR+%22ambiente+de+execu%C3%A7%C3%A3o+confi%C3%A1vel%22+OR+%22IA+confidencial%22+OR+%22confidential+computing%22&hl=pt-PT&gl=PT&ceid=PT:pt-150
     lang: pt
+  # --- Japanese (lang: ja) ---
+  # Titles are shown translated, with the original after them. ZDNET Japan
+  # and Mynavi TECH+ serve malformed XML, so they come via Google News site
+  # searches for CC terms.
+  - name: ITmedia NEWS
+    url: https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml
+    region: jp
+    lang: ja
+  - name: ITmedia エンタープライズ
+    url: https://rss.itmedia.co.jp/rss/2.0/enterprise.xml
+    region: jp
+    lang: ja
+  - name: "@IT"
+    url: https://rss.itmedia.co.jp/rss/2.0/ait.xml
+    region: jp
+    lang: ja
+  - name: EE Times Japan
+    url: https://rss.itmedia.co.jp/rss/2.0/eetimes.xml
+    region: jp
+    lang: ja
+  - name: クラウド Watch
+    url: https://cloud.watch.impress.co.jp/data/rss/1.0/clw/feed.rdf
+    region: jp
+    lang: ja
+  - name: PC Watch
+    url: https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf
+    region: jp
+    lang: ja
+  - name: INTERNET Watch
+    url: https://internet.watch.impress.co.jp/data/rss/1.0/iw/feed.rdf
+    region: jp
+    lang: ja
+  - name: IT Leaders
+    url: https://it.impress.co.jp/list/feed/rss
+    region: jp
+    lang: ja
+  - name: Publickey
+    url: https://www.publickey1.jp/atom.xml
+    region: jp
+    lang: ja
+  - name: ASCII.jp
+    url: https://ascii.jp/rss.xml
+    region: jp
+    lang: ja
+  - name: 日経クロステック
+    url: https://xtech.nikkei.com/rss/index.rdf
+    region: jp
+    lang: ja
+  - name: Security NEXT
+    url: https://www.security-next.com/feed
+    region: jp
+    lang: ja
+  - name: ScanNetSecurity
+    url: https://scan.netsecurity.ne.jp/rss/index.rdf
+    region: jp
+    lang: ja
+  - name: gihyo.jp
+    url: https://gihyo.jp/feed/rss2
+    region: jp
+    lang: ja
+  - name: CodeZine
+    url: https://codezine.jp/rss/new/20/index.xml
+    region: jp
+    lang: ja
+  - name: EnterpriseZine
+    url: https://enterprisezine.jp/rss/new/20/index.xml
+    region: jp
+    lang: ja
+  - name: ZDNET Japan (via Google News)
+    url: https://news.google.com/rss/search?q=site%3Ajapan.zdnet.com%20%28%22%E6%A9%9F%E5%AF%86%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%22%20OR%20%22%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%83%87%E3%83%B3%E3%82%B7%E3%83%A3%E3%83%AB%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%22%20OR%20%22%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%83%87%E3%83%B3%E3%82%B7%E3%83%A3%E3%83%AB%E3%83%BB%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%22%20OR%20%22%E7%A7%98%E5%AF%86%E8%A8%88%E7%AE%97%22%20OR%20%22%E4%BF%A1%E9%A0%BC%E3%81%A7%E3%81%8D%E3%82%8B%E5%AE%9F%E8%A1%8C%E7%92%B0%E5%A2%83%22%20OR%20TEE%20OR%20SGX%20OR%20TDX%20OR%20SEV%20OR%20%22confidential%20computing%22%29%20when%3A7d&hl=ja&gl=JP&ceid=JP:ja
+    lang: ja
+  - name: Mynavi TECH+ (via Google News)
+    url: https://news.google.com/rss/search?q=site%3Anews.mynavi.jp%20%28%22%E6%A9%9F%E5%AF%86%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%22%20OR%20%22%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%83%87%E3%83%B3%E3%82%B7%E3%83%A3%E3%83%AB%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%22%20OR%20%22%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%83%87%E3%83%B3%E3%82%B7%E3%83%A3%E3%83%AB%E3%83%BB%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%22%20OR%20%22%E7%A7%98%E5%AF%86%E8%A8%88%E7%AE%97%22%20OR%20%22%E4%BF%A1%E9%A0%BC%E3%81%A7%E3%81%8D%E3%82%8B%E5%AE%9F%E8%A1%8C%E7%92%B0%E5%A2%83%22%20OR%20TEE%20OR%20SGX%20OR%20TDX%20OR%20SEV%20OR%20%22confidential%20computing%22%29%20when%3A7d&hl=ja&gl=JP&ceid=JP:ja
+    lang: ja
+  - name: Google News CC - Japanese
+    url: https://news.google.com/rss/search?q=%22%E6%A9%9F%E5%AF%86%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%22%20OR%20%22%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%83%87%E3%83%B3%E3%82%B7%E3%83%A3%E3%83%AB%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%22%20OR%20%22%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%83%87%E3%83%B3%E3%82%B7%E3%83%A3%E3%83%AB%E3%83%BB%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%22%20OR%20%22%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%83%87%E3%83%B3%E3%82%B7%E3%83%A3%E3%83%ABAI%22%20OR%20%22%E6%A9%9F%E5%AF%86AI%22%20when%3A7d&hl=ja&gl=JP&ceid=JP:ja
+    lang: ja
+  - name: Google News CC - Japanese related terms
+    url: https://news.google.com/rss/search?q=%22%E7%A7%98%E5%AF%86%E8%A8%88%E7%AE%97%22%20OR%20%22%E4%BF%A1%E9%A0%BC%E3%81%A7%E3%81%8D%E3%82%8B%E5%AE%9F%E8%A1%8C%E7%92%B0%E5%A2%83%22%20OR%20%22Intel%20TDX%22%20OR%20%22AMD%20SEV%22%20OR%20%22Intel%20SGX%22%20OR%20%22Arm%20CCA%22%20OR%20%22%E3%83%AA%E3%83%A2%E3%83%BC%E3%83%88%E3%82%A2%E3%83%86%E3%82%B9%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%22%20when%3A7d&hl=ja&gl=JP&ceid=JP:ja
+    lang: ja

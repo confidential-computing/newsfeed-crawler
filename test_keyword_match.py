@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import yaml
 
-from crawler import DEFAULT_KEYWORDS, keyword_match, keywords_for_language
+from crawler import DEFAULT_KEYWORDS, is_about_member, keyword_match, keywords_for_language
 
 KEYWORDS = DEFAULT_KEYWORDS.split(",")
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "feeds.yaml")) as _f:
@@ -157,6 +157,55 @@ class TestSpanishPortuguese(unittest.TestCase):
 
     def test_english_feeds_unchanged(self):
         self.assertEqual(keywords_for_language(KEYWORDS, LANGUAGE_KEYWORDS, "en"), KEYWORDS)
+
+
+class TestJapanese(unittest.TestCase):
+
+    def ja(self, text):
+        return keyword_match(text, keywords_for_language(KEYWORDS, LANGUAGE_KEYWORDS, "ja"), "ja")
+
+    def test_acronyms_followed_by_japanese_match(self):
+        for text in ["インテルのTDXを採用した", "AMD SEV-SNPに対応", "TEEで保護されたAI推論"]:
+            self.assertTrue(self.ja(text), text)
+
+    def test_full_width_acronyms_match(self):
+        self.assertTrue(self.ja("ＴＤＸ対応のクラウド"))
+
+    def test_japanese_terms_match_with_or_without_dots_and_spaces(self):
+        for text in ["コンフィデンシャル・コンピューティングの導入",
+                     "コンフィデンシャル コンピューティングの導入",
+                     "コンフィデンシャルコンピューティングの導入",
+                     "機密コンピューティングを提供", "信頼できる実行環境（TEE）",
+                     "秘密計算サービスを開始", "ｺﾝﾌｨﾃﾞﾝｼｬﾙｺﾝﾋﾟｭｰﾃｨﾝｸﾞ"]:
+            self.assertTrue(self.ja(text), text)
+
+    def test_bare_sgx_needs_context(self):
+        self.assertTrue(self.ja("インテルSGXのエンクレーブ"))
+        self.assertFalse(self.ja("シンガポール取引所（SGX）に上場"))
+        self.assertFalse(self.ja("SGXの決算発表"))
+
+    def test_unrelated_japanese_text_does_not_match(self):
+        self.assertFalse(self.ja("新しいスマートフォンが発売された"))
+
+    def test_english_boundaries_unchanged(self):
+        self.assertFalse(keyword_match("STEEL prices rise", KEYWORDS))
+        self.assertFalse(keyword_match("SGX_TOTAL counter", KEYWORDS))
+        self.assertTrue(keyword_match("Intel TDX-based VMs", KEYWORDS))
+
+
+class TestMemberAliases(unittest.TestCase):
+
+    MEMBERS = ["Intel Corporation", "Hewlett Packard Enterprise", "Fujitsu Limited",
+               "Arm Limited"]
+
+    def test_katakana_and_kanji_names(self):
+        self.assertEqual(is_about_member("インテルが発表", self.MEMBERS), "Intel Corporation")
+        self.assertEqual(is_about_member("富士通の秘密計算", self.MEMBERS), "Fujitsu Limited")
+        self.assertEqual(is_about_member("ヒューレット パッカード エンタープライズ",
+                                         self.MEMBERS), "Hewlett Packard Enterprise")
+
+    def test_ambiguous_names_are_not_aliased(self):
+        self.assertIsNone(is_about_member("ロボットアームの新製品", self.MEMBERS))
 
 
 if __name__ == "__main__":

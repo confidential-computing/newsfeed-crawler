@@ -182,6 +182,10 @@ class TestStoreArticleTexts(unittest.TestCase):
         store.add(FEED, [entry("https://a/old")], NOW - timedelta(days=10))
         self.assertEqual(self.run_store([]), (0, 0))
 
+    def test_old_articles_in_a_new_feed_are_skipped(self):
+        self.assertEqual(self.run_store([entry("https://a/old", NOW - timedelta(days=30)),
+                                         entry("https://a/new", NOW - timedelta(days=1))]), (1, 0))
+
     def test_backlog_is_capped_per_run(self):
         real_cap = crawler.TEXT_FETCHES_PER_STORE_RUN
         crawler.TEXT_FETCHES_PER_STORE_RUN = 2

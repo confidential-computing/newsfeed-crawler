@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 import time
+import unicodedata
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -430,6 +431,33 @@ def is_by_member(feed_name, author, members):
     return None
 
 
+# Members' names as non-English articles write them, keyed by
+# clean_member_name(). Matched ignoring spaces and the katakana middle dot.
+# Ambiguous transliterations are left out: アーム (Arm; also any robot
+# "arm"), メタ (Meta; "meta-"), マーベル (Marvell; Marvel), アンペア
+# (Ampere; the unit).
+MEMBER_ALIASES = {
+    "intel": ["インテル"],
+    "microsoft": ["マイクロソフト"],
+    "google": ["グーグル"],
+    "nvidia": ["エヌビディア"],
+    "qualcomm": ["クアルコム"],
+    "samsung electronics": ["サムスン"],
+    "huawei technologies co., ltd": ["ファーウェイ", "華為", "华为"],
+    "cisco": ["シスコ"],
+    "red hat": ["レッドハット"],
+    "fujitsu": ["富士通"],
+    "hewlett packard enterprise": ["ヒューレット・パッカード・エンタープライズ"],
+    "canonical": ["カノニカル"],
+    "linaro": ["リナロ"],
+    "eaglys": ["イーグリス"],
+    "tiktok": ["ティックトック"],
+    "jpmorgan chase bank, national association": ["JPモルガン"],
+    "volcano engine": ["火山引擎"],
+    "shanghai jiao tong university": ["上海交通大学"],
+}
+
+
 def is_about_member(haystack, members):
     text = haystack.lower()
     
@@ -438,6 +466,14 @@ def is_about_member(haystack, members):
         cleaned = clean_member_name(m)
         if len(cleaned) > 2 and re.search(rf"\b{re.escape(cleaned)}\b", text):
             return m
+
+    squeezed = None
+    for m in members:
+        for alias in MEMBER_ALIASES.get(clean_member_name(m), []):
+            if squeezed is None:
+                squeezed = re.sub(r"[\s・]+", "", unicodedata.normalize("NFKC", text))
+            if re.sub(r"[\s・]+", "", alias).lower() in squeezed:
+                return m
     
     # Special case: Check for Ubuntu if Canonical is a member
     canonical_members = [m for m in members if 'canonical' in m.lower()]
@@ -832,8 +868,10 @@ def store_article_texts(args, feed_config, store, now):
         feed_keywords = keywords_for_language(keywords, language_keywords, lang)
         for rec in store.entries_for(feed_def["url"]):
             link = rec["link"]
-            if (not link or rec["seen"] < since.isoformat() or _host(link) in _AGGREGATOR_HOSTS
-                    or not texts.needs_fetch(link)):
+            # A newly added feed lists old articles as new: skip those too.
+            if (not link or rec["seen"] < since.isoformat()
+                    or (rec["published"] and rec["published"] < since.isoformat())
+                    or _host(link) in _AGGREGATOR_HOSTS or not texts.needs_fetch(link)):
                 continue
             haystack = f"{rec['title']} {rec['summary']} {' '.join(rec['tags'])}"
             if keyword_match(haystack, feed_keywords, lang):
@@ -1798,7 +1836,14 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, web
                 f.write(f"  - {_article_link(a)} {detail_fn(a)}\n")
 
 
-_ENCLAVE_RE = re.compile(r"\benclaves?\b", re.IGNORECASE)
+# Word edges for keywords and the context patterns below. \b would also need
+# an edge between "TDX" and Japanese or Korean text written straight after
+# it ("TDXを", "SGX를"), where there is none: those letters count as word
+# characters too. Only ASCII letters, digits and _ continue a word here.
+_WB = r"(?<![A-Za-z0-9_])"
+_WE = r"(?![A-Za-z0-9_])"
+
+_ENCLAVE_RE = re.compile(rf"{_WB}enclaves?{_WE}", re.IGNORECASE)
 _ENCLAVE_CONTEXT_CHARS = 80
 # Computing context shared by 'enclave' and 'SGX'; each adds the other.
 _CONTEXT_TERMS = (
@@ -1807,21 +1852,28 @@ _CONTEXT_TERMS = (
     r"silicon|firmware|hardware|software|memory|iPhones?|Apple|Intel|AMD|"
     r"Azure|AWS|cloud|comput\w*|technolog\w*|keys|isolat\w*|privacy|"
     r"workloads?|VMs?|virtual|kernel|Open\s?Enclave|Gramine|Occlum")
-_ENCLAVE_CONTEXT_RE = re.compile(rf"\b(?:{_CONTEXT_TERMS}|(?-i:SGX))\b", re.IGNORECASE)
-_SGX_RE = re.compile(r"\bSGX\b")
+# The same in Japanese: Intel, enclave, encryption, confidential, secure,
+# processor, memory, attestation, virtual(isation), cloud, vulnerability.
+_CONTEXT_TERMS_JA = (
+    r"インテル|エンクレーブ|暗号|機密|セキュア|プロセッサ|メモリ|アテステーション|"
+    r"仮想|クラウド|脆弱性")
+_ENCLAVE_CONTEXT_RE = re.compile(
+    rf"{_WB}(?:{_CONTEXT_TERMS}|(?-i:SGX)){_WE}|{_CONTEXT_TERMS_JA}", re.IGNORECASE)
+_SGX_RE = re.compile(rf"{_WB}SGX{_WE}")
 _SGX_CONTEXT_RE = re.compile(
-    rf"\b(?:{_CONTEXT_TERMS}|enclaves?|Linux|drivers?|side[\s-]channel|"
-    r"vulnerab\w*|exploit\w*)\b", re.IGNORECASE)
+    rf"{_WB}(?:{_CONTEXT_TERMS}|enclaves?|Linux|drivers?|side[\s-]channel|"
+    rf"vulnerab\w*|exploit\w*){_WE}|{_CONTEXT_TERMS_JA}", re.IGNORECASE)
 # 'SEV' is also incident-severity jargon ("SEV1", "agent accelerated SEVs").
 # Severity levels never count; bare SEV needs AMD/virtualisation context
 # close by. The shared context list is too broad here: incident write-ups are
 # full of "cloud", "AWS" and "software". SEV-SNP and SEV-ES always count.
-_SEV_SEVERITY_RE = re.compile(r"\bSEV[\s-]?[0-4]\b", re.IGNORECASE)
-_SEV_RE = re.compile(r"\bSEV(?!-[A-Za-z])s?\b")
+_SEV_SEVERITY_RE = re.compile(rf"{_WB}SEV[\s-]?[0-4]{_WE}", re.IGNORECASE)
+_SEV_RE = re.compile(rf"{_WB}SEV(?!-[A-Za-z])s?{_WE}")
 _SEV_CONTEXT_RE = re.compile(
-    r"\b(?:AMD|EPYC|SNP|(?-i:TEEs?|TDX|SGX|CCA)|confidential|encrypt\w*|"
+    rf"{_WB}(?:AMD|EPYC|SNP|(?-i:TEEs?|TDX|SGX|CCA)|confidential|encrypt\w*|"
     r"attest\w*|enclaves?|VMs?|guests?|hypervisors?|virtuali[sz]\w*|KVM|QEMU|"
-    r"memory|firmware|kernel|Linux|CPUs?|processors?|vulnerab\w*)\b",
+    rf"memory|firmware|kernel|Linux|CPUs?|processors?|vulnerab\w*){_WE}|"
+    r"機密|暗号|仮想|メモリ|プロセッサ|脆弱性",
     re.IGNORECASE)
 
 
@@ -1863,25 +1915,36 @@ def keywords_for_language(english, extra, lang):
         [str(k).strip() for k in (extra or {}).get(lang) or [] if str(k).strip()]
 
 
+# Languages written without spaces between words. Their keywords are matched
+# ignoring spaces and the katakana middle dot, so "コンフィデンシャル・
+# コンピューティング" and "コンフィデンシャル コンピューティング" both match
+# a keyword written either way.
+_SPACELESS_LANGS = {"ja", "zh"}
+_SQUEEZE_RE = re.compile(r"[\s・]+")
+
+
 def keyword_match(text, keywords, lang="en"):
     # Exclude non-Confidential Computing uses of 'enclave' or other terms
     exclude_patterns = [
-        r"\bbuick\s+enclave(s)?\b",
+        rf"{_WB}buick\s+enclave(s)?{_WE}",
         # 'SGX' is also the Singapore Exchange ticker/venue, not Intel SGX
-        r"\b(?:on|listed\s+on)\s+(?:the\s+)?SGX\b",
-        r"\bSGX\s*[-:]\s*(?:listed|quoted|mainboard|catalist)\b",
-        r"\bSGX\s+(?:mainboard|catalist|securities|listing|listed)\b",
-        r"\bSingapore\s+Exchange\s*\(?\s*SGX\s*\)?",
-        r"\bSGX\s*\(?\s*Singapore\s+Exchange\s*\)?",
+        rf"{_WB}(?:on|listed\s+on)\s+(?:the\s+)?SGX{_WE}",
+        rf"{_WB}SGX\s*[-:]\s*(?:listed|quoted|mainboard|catalist){_WE}",
+        rf"{_WB}SGX\s+(?:mainboard|catalist|securities|listing|listed){_WE}",
+        rf"{_WB}Singapore\s+Exchange\s*\(?\s*SGX\s*\)?",
+        rf"{_WB}SGX\s*\(?\s*Singapore\s+Exchange\s*\)?",
+        r"シンガポール取引所\s*[（(]?\s*SGX\s*[)）]?",
     ]
+    # Full-width letters (ＳＧＸ) and half-width katakana become ordinary ones.
+    text = unicodedata.normalize("NFKC", text)
     text = _PACKAGE_NAME_RE.sub(" ", text)
     cleaned_text = text
     for pattern in exclude_patterns:
         cleaned_text = re.sub(pattern, "", cleaned_text, flags=re.IGNORECASE)
 
     # If the text is clearly about the Singapore Exchange, drop bare 'SGX' too
-    if re.search(r"singapore\s+exchange", text, flags=re.IGNORECASE):
-        cleaned_text = re.sub(r"\bSGX\b", "", cleaned_text)
+    if re.search(r"singapore\s+exchange|シンガポール取引所", text, flags=re.IGNORECASE):
+        cleaned_text = _SGX_RE.sub("", cleaned_text)
 
     # In general news 'enclave' is far more often a territory (Gaza, Ceuta,
     # Kaliningrad) than a TEE. Keep an occurrence only when computing context
@@ -1901,16 +1964,21 @@ def keyword_match(text, keywords, lang="en"):
     cleaned_text = _SEV_SEVERITY_RE.sub("", cleaned_text)
     cleaned_text = _drop_without_context(_SEV_RE, _SEV_CONTEXT_RE, cleaned_text)
 
+    squeezed = _SQUEEZE_RE.sub("", cleaned_text) if lang in _SPACELESS_LANGS else None
     for kw in keywords:
-        kw = kw.strip()
+        kw = unicodedata.normalize("NFKC", kw.strip())
         if not kw:
+            continue
+        if squeezed is not None and not kw.isascii():
+            if _SQUEEZE_RE.sub("", kw).lower() in squeezed.lower():
+                return True
             continue
         # Plurals count too: "TEEs", "enclaves", "confidential containers".
         if re.fullmatch(r"[A-Z0-9-]+", kw):
-            if re.search(rf"\b{re.escape(kw)}s?\b", cleaned_text):
+            if re.search(rf"{_WB}{re.escape(kw)}s?{_WE}", cleaned_text):
                 return True
         else:
-            if re.search(rf"\b{re.escape(kw)}s?\b", cleaned_text, flags=re.IGNORECASE):
+            if re.search(rf"{_WB}{re.escape(kw)}s?{_WE}", cleaned_text, flags=re.IGNORECASE):
                 return True
     return False
 

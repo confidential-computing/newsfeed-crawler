@@ -46,6 +46,13 @@
   `--no-translate` turns this off.
 - Article text fetched without a declared charset is decoded from the page's
   own `<meta charset>`, so accented text matches.
+- Japanese: 20 feeds (ITmedia, Impress Watch, @IT, Publickey, ASCII.jp,
+  Nikkei xTECH, Security NEXT, ScanNetSecurity and others, plus Google News
+  searches), with Japanese keywords. Matching normalises full-width
+  characters, ignores spaces and ・ in Japanese, and no longer needs a word
+  break after an acronym ("TDXを"). Member names in katakana and kanji count
+  as member mentions (`MEMBER_ALIASES`). A past-week test found 4 stories,
+  all via Google News.
 
 ### Coverage
 - Spanish feeds from Spain and Latin America, Portuguese feeds from Brazil

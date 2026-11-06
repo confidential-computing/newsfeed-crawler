@@ -73,7 +73,7 @@ python crawler.py --only-region in --only-region kr
 
 ## Feeds in other languages
 
-A feed sets `lang:` (e.g. `es`, `pt`; default `en`) when its articles aren't in English. Its articles are matched against the English keywords plus the language's list under the top-level `keywords:` mapping in `feeds.yaml`. Acronyms such as TEE, SGX and TDX need no translation. Some English keywords are ordinary words in another language: in Spanish and Portuguese bare "enclave" means a territorial enclave, so there only qualified forms such as "enclave seguro" count.
+A feed sets `lang:` (e.g. `es`, `pt`; default `en`) when its articles aren't in English. Its articles are matched against the English keywords plus the language's list under the top-level `keywords:` mapping in `feeds.yaml`. Acronyms such as TEE, SGX and TDX need no translation. Some English keywords are ordinary words in another language: in Spanish and Portuguese bare "enclave" means a territorial enclave, so there only qualified forms such as "enclave seguro" count. Japanese (`ja`) is matched ignoring spaces and the katakana middle dot (・), so "コンフィデンシャル・コンピューティング" and "コンフィデンシャルコンピューティング" are the same keyword, and full-width letters (ＳＧＸ) count as ordinary ones. Acronyms match with text written straight after them ("TDXを"). Members' names as Japanese articles write them (インテル, 富士通) are listed in `MEMBER_ALIASES` in `crawler.py`.
 
 Matched non-English titles are translated into English with the `claude` CLI before deduplication and clustering, so stories are compared in one language. Reports and editions show the English title as the link, followed by the original:
 
