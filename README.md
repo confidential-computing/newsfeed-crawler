@@ -114,3 +114,11 @@ At the end of each run a per-feed yield table (entries live+stored / in window /
 It starts `webfeed-run.sh` (which runs `crawler.py --webfeed --webfeed-exclude-uk`) when no edition has been written since the most recent Thursday 13:00 UTC, according to `last_run_at` in `.webfeed-state.json`. A run that was missed because the machine was off, or that was killed or failed, is therefore retried at the next hour until an edition is written. A late edition resumes from the previous edition's cutoff, so nothing is dropped or repeated. A lock (`.webfeed.lock`) stops a second run from starting while a slow run is still going.
 
 `webfeed-run.sh` appends to `webfeed-cron.log`, with a start line and a `finished (status N, Ns)` line for each run. A start line with no finish line means the run was killed, for example by a reboot.
+
+## Published editions
+
+Weekly editions are published in [confidential-computing/newsfeed](https://github.com/confidential-computing/newsfeed).
+
+## Licence
+
+Apache License 2.0; see [LICENSE](LICENSE).

@@ -69,3 +69,11 @@ feed-store/
 # English translations of non-English titles (claude CLI), rebuilt on demand
 translations.json
 .webfeed.lock
+
+# Local to this machine, not part of the crawler
+CC-CfP-Intelligence/
+ccc-linkedin-urns.json
+package.json
+package-lock.json
+.claude/settings.local.json
+CLAUDE.local.md
