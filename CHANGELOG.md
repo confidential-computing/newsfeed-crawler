@@ -38,7 +38,7 @@
   each site across the week.
 - `polite_hosts:` / `polite_delay:` in feeds.yaml: article fetches to a
   listed site's server go one at a time with a pause. Used for TechDay
-  (IT Brief / SecurityBrief), whose feeds are paused after it blocked us.
+  (IT Brief / SecurityBrief).
 - `python-dateutil` added to requirements.txt.
 
 ### Languages
@@ -82,6 +82,9 @@
   with similar titles. Each copy removed is logged.
 
 ### Coverage
+- Removed the six TechDay feeds (IT Brief and SecurityBrief, Asia, Australia
+  and New Zealand editions). TechDay blocked our IP on 2026-11-05 after a
+  catch-up run fetched too much from them and declined to lift the block.
 - Australian and New Zealand feeds: iTnews, ARN, iTWire, IT Brief and
   SecurityBrief (AU and NZ editions), Reseller News NZ, CIO New Zealand, and
   Google News searches of CRN Australia, Cyber Daily, InnovationAus,
