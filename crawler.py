@@ -1521,7 +1521,34 @@ _CLUSTER_PROMPT_TPL = (
 )
 
 
-def cluster_stories(articles):
+# Webfeed editions fold every report of one story under a single lead link,
+# so here the opposite mistake matters: the same announcement covered by
+# twenty outlets in five languages must come out as one cluster. Titles of
+# non-English articles are already translated to English.
+_WEBFEED_CLUSTER_PROMPT_TPL = (
+    "You are a news editor. Given a JSON array of news article metadata, group them "
+    "into clusters where each cluster is ONE news story: the same announcement, "
+    "release, incident, report or event.\n\n"
+    "RULES:\n"
+    "- Articles from different outlets, countries and languages reporting the same "
+    "announcement or event belong in the SAME cluster, even when their headlines "
+    "stress different angles (e.g. 'AMD EPYC to power Google TPU 8tx' and "
+    "'Google unveils TPU 8tx and TPU 8i Max' are one story)\n"
+    "- Follow-up analysis or commentary on that announcement in the same week "
+    "also belongs in its cluster\n"
+    "- Different announcements, products, incidents or vulnerabilities are "
+    "SEPARATE clusters, even from the same company or on the same topic\n"
+    "- Articles that share only a broad theme (confidential AI, data sovereignty) "
+    "but no specific event are SEPARATE\n"
+    "- An article with no match is a singleton cluster\n\n"
+    "Every article id must appear in exactly one cluster. "
+    "Respond with ONLY a JSON object on a single line — no prose, no markdown — in "
+    'exactly this form: {{"clusters": [{{"label": "Specific event description", "ids": [1, 2]}}, ...]}}\n\n'
+    "Articles: {articles_json}"
+)
+
+
+def cluster_stories(articles, prompt_tpl=_CLUSTER_PROMPT_TPL):
     """Cluster articles by same story using the claude CLI.
 
     Returns (id_to_cluster, cluster_labels) where:
@@ -1541,13 +1568,14 @@ def cluster_stories(articles):
             "date": a.get("published", ""),
         })
 
-    prompt = _CLUSTER_PROMPT_TPL.format(articles_json=json.dumps(compact, separators=(",", ":")))
+    prompt = prompt_tpl.format(articles_json=json.dumps(compact, ensure_ascii=False,
+                                                        separators=(",", ":")))
 
     result = subprocess.run(
         ["claude", "-p", prompt, "--output-format", "json"],
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=300,
     )
     if result.returncode != 0:
         raise RuntimeError(f"claude exited {result.returncode}: {result.stderr.strip()[:200]}")
@@ -1735,7 +1763,7 @@ def heuristic_cluster(articles, date_window_days=1, jaccard_threshold=0.4):
     return id_to_cluster, cluster_labels
 
 
-def group_articles_by_story(categorized, members, use_ai=True):
+def group_articles_by_story(categorized, members, use_ai=True, prompt_tpl=_CLUSTER_PROMPT_TPL):
     """
     Assign ``_id`` and ``_cluster`` to every article dict in *categorized*.
     Returns cluster_labels {cluster_id: label_string}.
@@ -1758,7 +1786,7 @@ def group_articles_by_story(categorized, members, use_ai=True):
 
     if use_ai:
         try:
-            id_to_cluster, cluster_labels = cluster_stories(all_articles)
+            id_to_cluster, cluster_labels = cluster_stories(all_articles, prompt_tpl)
             print(
                 f"  AI clustered {len(all_articles)} articles into "
                 f"{len(cluster_labels)} stories.",
@@ -1848,6 +1876,104 @@ def _write_section(f, articles, cluster_labels, detail_fn, no_cluster=False, web
             f.write(f"\n**{label}**\n")
             for a in group:
                 f.write(f"  - {_article_link(a)} {detail_fn(a)}\n")
+
+
+# Grouped webfeed editions: "Also in <language> | <the same, in that language>".
+LANGUAGE_NAMES = {
+    "es": ("Spanish", "También en español"),
+    "pt": ("Portuguese", "Também em português"),
+    "ja": ("Japanese", "日本語でも"),
+    "ko": ("Korean", "한국어로도"),
+    "zh": ("Chinese", "也有中文报道"),
+    "fr": ("French", "Aussi en français"),
+    "de": ("German", "Auch auf Deutsch"),
+    "it": ("Italian", "Anche in italiano"),
+}
+
+# English names for outlets that Google News names by a non-Latin brand. In
+# the "More in English" list a link reading "富途牛牛" looks like a
+# foreign-language article; it is Futu's English site.
+OUTLET_ENGLISH_NAMES = {"富途牛牛": "Futu"}
+
+
+def _outlet_name(a):
+    """
+    Short outlet name for a link in a grouped story. Google News results
+    carry the real outlet as the headline's " - Outlet" suffix (the feed name
+    is just "Google News CC"); elsewhere the publisher is the feed's name.
+    """
+    outlet = a.get("publisher", "") or a.get("host", "")
+    title = a.get("title", "")
+    if _host(a.get("url", "")) in _AGGREGATOR_HOSTS and " - " in title:
+        parts = [p.strip() for p in title.split(" - ")]
+        outlet = parts[-1]
+        # "Investing.com - FX | 株式市場 | ファイナンス": the outlet is the
+        # first part, the rest is its site tagline.
+        if len(parts) > 2 and ("|" in outlet or len(outlet) > 30):
+            outlet = parts[1]
+        outlet = re.sub(r"^https?://|/$", "", outlet)
+    if a.get("lang", "en") == "en" and outlet in OUTLET_ENGLISH_NAMES:
+        outlet = f"{OUTLET_ENGLISH_NAMES[outlet]} ({outlet})"
+    return outlet or "link"
+
+
+def _story_lead(group):
+    """
+    The article shown in full for a story: English if there is one, and a
+    direct link to the outlet before a Google News redirect, then the earliest.
+    """
+    far_future = datetime.max.replace(tzinfo=timezone.utc)
+    return min(group, key=lambda a: (
+        a.get("lang", "en") != "en",
+        _host(a.get("url", "")) in _AGGREGATOR_HOSTS,
+        _parse_pub_date(a.get("published", "")) or far_future,
+    ))
+
+
+def _write_webfeed_grouped(f, articles, cluster_labels, detail_fn):
+    """
+    Write a webfeed edition grouped by story. Each story is one bullet, its
+    lead article (see _story_lead) written in full; the rest of its coverage
+    follows as indented lines of outlet-name links, English first, then one
+    line per language, most-covered first:
+
+        - [Lead headline](url) (Type) (Publisher: X) - date
+          - More in English (3): [Outlet](url), ...
+          - Also in Korean | 한국어로도 (5): [Outlet](url), ...
+
+    Stories with more coverage come first; single-article stories keep the
+    order of *articles* (by-member, about-member, other).
+    *detail_fn(article)* gives the lead's parenthetical details.
+    """
+    if not cluster_labels:
+        groups = [[a] for a in articles]
+    else:
+        by_cluster = {}
+        for a in articles:
+            by_cluster.setdefault(a.get("_cluster", -1 - id(a)), []).append(a)
+        groups = list(by_cluster.values())
+    # sorted() is stable, so equal-sized stories keep their first article's order
+    groups = sorted(groups, key=lambda g: -len(g))
+
+    for group in groups:
+        lead = _story_lead(group)
+        f.write(f"- {_article_link(lead)} {detail_fn(lead)}\n")
+        rest = [a for a in group if a is not lead]
+
+        def _links(items):
+            return ", ".join(f"[{_outlet_name(a)}]({a['url']})" for a in items)
+
+        english = [a for a in rest if a.get("lang", "en") == "en"]
+        if english:
+            f.write(f"  - More in English ({len(english)}): {_links(english)}\n")
+        by_lang = {}
+        for a in rest:
+            if a.get("lang", "en") != "en":
+                by_lang.setdefault(a["lang"], []).append(a)
+        for lang, items in sorted(by_lang.items(), key=lambda kv: -len(kv[1])):
+            name, native = LANGUAGE_NAMES.get(lang, (lang, ""))
+            label = f"Also in {name}" + (f" | {native}" if native else "")
+            f.write(f"  - {label} ({len(items)}): {_links(items)}\n")
 
 
 # Word edges for keywords and the context patterns below. \b would also need
@@ -2242,6 +2368,11 @@ def main():
                         help="Webfeed mode: weekly scope since last run, no category headings "
                              "(machine-readable HTML comment tags instead), no icons, "
                              "no subject-company summary")
+    parser.add_argument("--webfeed-flat", action="store_true",
+                        help="Webfeed mode: write a flat list, one bullet per article, "
+                             "instead of the default grouping by story (one lead link per "
+                             "story, the rest of its coverage folded into 'More in English' "
+                             "and 'Also in <language>' lines)")
     parser.add_argument("--webfeed-state", default=None,
                         help="Path to the webfeed last-run state file "
                              "(default: .webfeed-state.json beside the output file)")
@@ -2740,7 +2871,16 @@ def main():
     if not args.no_cluster:
         print("Clustering articles by story...", file=sys.stderr)
         use_ai = args.enable_ai_cluster
-        cluster_labels = group_articles_by_story(categorized, members, use_ai=use_ai)
+        prompt_tpl = _CLUSTER_PROMPT_TPL
+        if args.webfeed and not args.webfeed_flat:
+            # A grouped edition is only as good as its clusters, and the
+            # heuristic merges near-identical English headlines only (66
+            # articles -> 54 "stories" on 2026-11-12, with one announcement
+            # spread over 46 of them). Falls back to it if claude fails.
+            use_ai = True
+            prompt_tpl = _WEBFEED_CLUSTER_PROMPT_TPL
+        cluster_labels = group_articles_by_story(categorized, members, use_ai=use_ai,
+                                                 prompt_tpl=prompt_tpl)
 
     print(f"Writing report to {args.output}...", file=sys.stderr)
 
@@ -2780,38 +2920,37 @@ def main():
             # Returning empty to remove the HTML comment tag from each article in webfeed mode
             return ""
 
-        if not webfeed:
-            f.write("## Articles BY Members\n\n")
-        _write_section(
-            f, categorized["by_member"], cluster_labels,
-            lambda a: f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}{', Member: ' + a['member'] if not webfeed else ''}) - {a['published']}{_tag('by-member', a)}",
-            no_cluster=no_cluster,
-            webfeed=webfeed,
-        )
+        def _by_member_detail(a):
+            return f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}{', Member: ' + a['member'] if not webfeed else ''}) - {a['published']}{_tag('by-member', a)}"
 
-        if not webfeed:
-            f.write("## Articles ABOUT Members (or mentioning them)\n\n")
-        _write_section(
-            f, categorized["about_member"], cluster_labels,
-            lambda a: f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}{', Mentions: ' + a['member'] if not webfeed else ''}) - {a['published']}{_tag('about-member', a)}",
-            no_cluster=no_cluster,
-            webfeed=webfeed,
-        )
-
-        if not webfeed:
-            f.write("## Other Articles (Don't mention members)\n\n")
+        def _about_member_detail(a):
+            return f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}{', Mentions: ' + a['member'] if not webfeed else ''}) - {a['published']}{_tag('about-member', a)}"
 
         def _other_detail(a):
             subject = infer_subject(a["title"])
             mention = f", Subject: {subject}" if subject and not webfeed else ""
             return f"({format_story_type_tag(a.get('story_type'), use_styling=not args.no_styling)}) (Publisher: {a['publisher']}{mention}) - {a['published']}{_tag('other', a)}"
 
-        _write_section(
-            f, categorized["dont"], cluster_labels,
-            _other_detail,
-            no_cluster=no_cluster,
-            webfeed=webfeed,
-        )
+        if webfeed and not args.webfeed_flat:
+            details = {}
+            for bucket, fn in (("by_member", _by_member_detail),
+                               ("about_member", _about_member_detail),
+                               ("dont", _other_detail)):
+                for a in categorized[bucket]:
+                    details[id(a)] = fn(a)
+            _write_webfeed_grouped(
+                f, categorized["by_member"] + categorized["about_member"] + categorized["dont"],
+                {} if no_cluster else cluster_labels, lambda a: details[id(a)])
+        else:
+            for bucket, heading, fn in (
+                    ("by_member", "## Articles BY Members", _by_member_detail),
+                    ("about_member", "## Articles ABOUT Members (or mentioning them)",
+                     _about_member_detail),
+                    ("dont", "## Other Articles (Don't mention members)", _other_detail)):
+                if not webfeed:
+                    f.write(f"{heading}\n\n")
+                _write_section(f, categorized[bucket], cluster_labels, fn,
+                               no_cluster=no_cluster, webfeed=webfeed)
 
         if not webfeed:
             f.write("\n## Subject Companies (Non-Member Articles)\n\n")

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Webfeed editions
+- Editions are grouped by story by default. Each story is one bullet, its
+  lead article in full (English and a direct link preferred); the rest of
+  its coverage is folded into "More in English (n)" and "Also in Korean |
+  한국어로도 (n)" lines of outlet-name links. On 2026-11-12 this turned 64
+  bullets into 14, one Google TPU 8tx announcement having taken 46 of them.
+  `--webfeed-flat` writes the previous flat list.
+- Grouped editions cluster with the claude CLI, using instructions that put
+  the same news from different outlets and languages in one story. The
+  heuristic, still the fallback, merges only near-identical headlines
+  (66 articles -> 54 "stories" on 2026-11-12).
+- Outlets that Google News names by a non-Latin brand are shown by their
+  English name in the English list: "Futu (富途牛牛)".
+
 ### Scheduling
 - The weekly edition is now started by `webfeed-due.sh`, checked hourly from
   cron, instead of a single Thursday 13:00 cron line. A run that is missed,
@@ -20,6 +34,14 @@
   severity levels (SEV1, SEV-2) never count. Incident-severity jargon
   ("agent accelerated SEVs") had matched an InfoQ panel on frontend
   architecture. SEV-SNP and SEV-ES are unaffected.
+- Bare "TDX" counts only with Intel or virtualisation context nearby. It is
+  also Korea's digital telephone exchange (TDX-1, 1986), which matched a
+  Bloter piece on KT's telecom history exhibition. TDX Connect and TDX-IO
+  are unaffected.
+- Previous/next-post links and "more posts" lists below an article are
+  stripped from its text before matching. A MuyComputerPro story about
+  Claude matched only via the next post's headline about confidential
+  computing.
 - Keywords inside package names (lowercase, three or more hyphen-joined
   parts, e.g. `aws-nitro-enclaves-cli`) are ignored. LWN's daily "Security
   updates for ..." tables matched on them every week.

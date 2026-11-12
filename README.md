@@ -53,6 +53,19 @@ When multiple outlets cover the same event, those articles are grouped under a b
 
 A `subjects-YYYY-MM-DD.json` file is also written alongside the report; each article entry includes a `_cluster` field with the story group id.
 
+### Webfeed editions
+
+`--webfeed` editions are grouped by story. Each story is one bullet with its lead article in full (English if there is one, a direct link before a Google News redirect, then the earliest); the rest of its coverage follows as indented lines of outlet-name links, English first, then one line per language with the label in that language too:
+
+```
+- [Google TPU 8tx Pairs AMD EPYC Turin Hosts with Confidential Computing…](url) (General CC News) (Publisher: ServeTheHome) - Mon, 09 Nov 2026 21:37:58 UTC
+  - More in English (18): [SMBtech](url), [TechTarget](url), …
+  - Also in Korean | 한국어로도 (11): [디일렉](url), …
+  - Also in Spanish | También en español (7): [MuyComputerPro](url), …
+```
+
+Stories with more coverage come first. A story covered by one article stays an ordinary bullet. Grouped editions always ask the `claude` CLI to cluster, with instructions to treat the same news across outlets and languages as one story (the deterministic heuristic, used if that fails, only merges near-identical headlines). `--webfeed-flat` writes the older flat list instead: one bullet per article, same-story articles adjacent.
+
 ## Adding feeds
 
 Edit `feeds.yaml` — no code changes needed. Each feed may set `region:` — where the outlet is based (e.g. `us`, `uk`, `global`, `asia`, `in`, `sg`, `kr`), not what the story is about. Regions are not shown in reports; they are recorded per article in the subjects JSON and used for filtering.
