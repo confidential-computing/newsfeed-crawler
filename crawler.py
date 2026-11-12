@@ -963,6 +963,12 @@ _CHROME_HINTS = re.compile(
     r"read[-_ ]?(also|more|next)|you[-_ ]?may[-_ ]?(also[-_ ]?)?like|"
     r"sidebar|widget|promo|newsletter|subscribe|advert|sponsor|outbrain|taboola|"
     r"comment|share|social|breadcrumb|menu|nav|footer|header|tags?[-_ ]?list|"
+    # Previous/next-post links and "more posts" lists under the article carry
+    # those posts' headlines as <p> text. Observed live: a MuyComputerPro story
+    # about Claude matched only via the next post's headline in the Zox News
+    # theme's mvp-prev-next block (its mvp-post-more list does the same).
+    r"prev[-_ ]?next|(prev|next)[-_ ]?(post|article|story|entry)|"
+    r"posts?[-_ ]?more|more[-_ ]?(posts|stories|articles|news)|"
     # Author bios list everything the writer covers, so a CC mention there is
     # about the author's beat, not this article. Observed live: a Red Hat
     # post-quantum article matched only via "He also covers confidential
