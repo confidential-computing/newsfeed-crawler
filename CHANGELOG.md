@@ -1,21 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Article text store
-- Changes to the article text extractor now reach text already in the store.
-  Each saved text records the `EXTRACTOR_VERSION` that extracted it; text
-  from an older version (or saved before versions were recorded) counts as
-  absent and is fetched again, within the usual per-server limits,
-  `polite_hosts` and the per-run fetch cap. Previously text cached before
-  556dd76 kept its previous/next-post blocks: a re-run of the 2026-11-05..12
-  window still matched MuyComputerPro's "Anthropic convierte Claude en una
-  suite ofimática…" via the next post's headline. Bump `EXTRACTOR_VERSION`
-  with every change to `extract_article_text()`.
-- The store currently holds ~24,000 URLs saved before versioning; the hourly
-  store runs refetch those still in their 8-day window at up to 1,500 a run,
-  so the backlog clears well before the next weekly edition.
-
 ## 2.12.0 — 2026-11-12
 
 ### Webfeed editions
@@ -31,6 +15,20 @@
   (66 articles -> 54 "stories" on 2026-11-12).
 - Outlets that Google News names by a non-Latin brand are shown by their
   English name in the English list: "Futu (富途牛牛)".
+
+### Article text store
+- Changes to the article text extractor now reach text already in the store.
+  Each saved text records the `EXTRACTOR_VERSION` that extracted it; text
+  from an older version (or saved before versions were recorded) counts as
+  absent and is fetched again, within the usual per-server limits,
+  `polite_hosts` and the per-run fetch cap. Previously text cached before
+  556dd76 kept its previous/next-post blocks: a re-run of the 2026-11-05..12
+  window still matched MuyComputerPro's "Anthropic convierte Claude en una
+  suite ofimática…" via the next post's headline. Bump `EXTRACTOR_VERSION`
+  with every change to `extract_article_text()`.
+- The store currently holds ~24,000 URLs saved before versioning; the hourly
+  store runs refetch those still in their 8-day window at up to 1,500 a run,
+  so the backlog clears well before the next weekly edition.
 
 ### Scheduling
 - The weekly edition is now started by `webfeed-due.sh`, checked hourly from
