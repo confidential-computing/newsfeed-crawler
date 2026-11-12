@@ -1891,6 +1891,19 @@ _SEV_CONTEXT_RE = re.compile(
     rf"memory|firmware|kernel|Linux|CPUs?|processors?|vulnerab\w*){_WE}|"
     r"機密|暗号|仮想|メモリ|プロセッサ|脆弱性|기밀|암호|가상|메모리|프로세서|취약점",
     re.IGNORECASE)
+# 'TDX' is also the Korean digital telephone exchange (TDX-1, 1986), which
+# turns up in telecom history pieces (KT, ETRI). Bare TDX needs Intel or
+# virtualisation context close by, like SEV; "TDX Connect" and "TDX-IO"
+# always count.
+_TDX_RE = re.compile(rf"{_WB}TDX(?!-[A-Za-z])s?{_WE}")
+_TDX_CONTEXT_RE = re.compile(
+    rf"{_WB}(?:Intel|Xeon|(?-i:TEEs?|SEV|SGX|CCA)|trust\s+domains?|confidential|"
+    r"encrypt\w*|attest\w*|enclaves?|VMs?|guests?|hypervisors?|virtuali[sz]\w*|"
+    rf"KVM|QEMU|memory|firmware|kernel|Linux|CPUs?|GPUs?|processors?|cloud|"
+    rf"vulnerab\w*){_WE}|"
+    r"インテル|機密|暗号|仮想|メモリ|プロセッサ|脆弱性|クラウド|"
+    r"인텔|제온|기밀|암호|가상|메모리|프로세서|취약점|클라우드",
+    re.IGNORECASE)
 
 
 # Package names in distribution advisory lists ("aws-nitro-enclaves-cli" in
@@ -1982,6 +1995,7 @@ def keyword_match(text, keywords, lang="en"):
     cleaned_text = _drop_without_context(_SGX_RE, _SGX_CONTEXT_RE, cleaned_text)
     cleaned_text = _SEV_SEVERITY_RE.sub("", cleaned_text)
     cleaned_text = _drop_without_context(_SEV_RE, _SEV_CONTEXT_RE, cleaned_text)
+    cleaned_text = _drop_without_context(_TDX_RE, _TDX_CONTEXT_RE, cleaned_text)
 
     squeezed = _SQUEEZE_RE.sub("", cleaned_text) if lang in _SPACELESS_LANGS else None
     for kw in keywords:

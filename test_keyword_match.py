@@ -126,6 +126,25 @@ class TestAcronyms(unittest.TestCase):
         ]:
             self.assertTrue(keyword_match(text, KEYWORDS), text)
 
+    def test_telephone_exchange_tdx_does_not_match(self):
+        for text in [
+            # Bloter, 2026-11-12 edition: KT telecom history exhibition
+            "1986년 국산 디지털 교환기 'TDX-1'이 상용화되면서 통신 환경은 크게 달라졌다",
+            "국산 디지털 교환기 TDX를 주제로 한 몰입형 미디어 아트를 감상할 수 있다",
+            "Korea's TDX digital telephone switching system, developed by ETRI",
+        ]:
+            self.assertFalse(keyword_match(text, KEYWORDS), text)
+
+    def test_computing_tdx_matches(self):
+        for text in [
+            "Intel TDX is now generally available",
+            "TDX guests boot under KVM",
+            "TDX Connect brings GPUs into the trust domain",
+            "구글 클라우드, 인텔 TDX 기반 인스턴스 출시",
+            "インテルのTDXを利用",
+        ]:
+            self.assertTrue(keyword_match(text, KEYWORDS), text)
+
 
 class TestSpanishPortuguese(unittest.TestCase):
     """Feeds with lang: es / pt use the keyword lists in feeds.yaml."""
