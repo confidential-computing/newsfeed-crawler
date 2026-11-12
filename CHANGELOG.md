@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.12.0 — 2026-11-12
 
 ### Webfeed editions
 - Editions are grouped by story by default. Each story is one bullet, its
