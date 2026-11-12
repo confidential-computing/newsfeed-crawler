@@ -758,6 +758,14 @@ TEXT_STORE_LOOKBACK_DAYS = 8
 # Most new entries per hourly run is ~100; the cap spreads a backlog (first
 # run, or after an outage) over several runs instead of one burst.
 TEXT_FETCHES_PER_STORE_RUN = 1500
+# Version of extract_article_text()'s output saved in the text store. Bump it
+# in the same commit as any change to extract_article_text() or the
+# _CHROME_TAGS/_CHROME_HINTS it uses: text saved by an older version (or
+# before versions were recorded, which counts as 1) still holds whatever the
+# old extractor kept, so the store treats it as absent and it is fetched again,
+# within the usual per-server limits, polite_hosts and per-run fetch cap.
+# 2: previous/next-post and "more posts" blocks stripped (556dd76).
+EXTRACTOR_VERSION = 2
 
 
 class TextStore:
@@ -766,6 +774,8 @@ class TextStore:
     fetching under *directory*, text zlib-compressed. The latest record for
     a URL wins. A failed fetch is saved as empty text and retried by later
     runs up to MAX_TRIES times in all; after that it counts as no text.
+    A record saved by an older EXTRACTOR_VERSION counts as absent, and its
+    tries start again from zero.
     """
 
     MAX_TRIES = 3
@@ -774,7 +784,7 @@ class TextStore:
         self.directory = directory
         self.keep_days = keep_days
         self.read_only = read_only
-        self.records = {}  # url -> {"url", "fetched", "tries", "z"}
+        self.records = {}  # url -> {"url", "fetched", "tries", "v", "z"}
         os.makedirs(directory, exist_ok=True)
 
     def _files(self):
@@ -807,9 +817,16 @@ class TextStore:
         import zlib
         return zlib.decompress(base64.b64decode(rec["z"])).decode("utf-8") if rec["z"] else ""
 
+    def _current(self, url):
+        """The URL's record if extract_article_text() is unchanged since."""
+        rec = self.records.get(url)
+        if rec is None or rec.get("v", 1) < EXTRACTOR_VERSION:
+            return None
+        return rec
+
     def get(self, url):
         """The saved text, "" if every try failed, or None to fetch it now."""
-        rec = self.records.get(url)
+        rec = self._current(url)
         if rec is None:
             return None
         if rec["z"] or rec["tries"] >= self.MAX_TRIES:
@@ -827,9 +844,10 @@ class TextStore:
             return
         lines = []
         for url, text in texts.items():
-            prev = self.records.get(url)
+            prev = self._current(url)
             rec = {"url": url, "fetched": now.isoformat(),
                    "tries": (prev["tries"] if prev else 0) + 1,
+                   "v": EXTRACTOR_VERSION,
                    "z": base64.b64encode(zlib.compress(text.encode("utf-8"))).decode("ascii")
                         if text else ""}
             self.records[url] = rec
@@ -951,6 +969,10 @@ def store_only(args, now):
     return 1 if failed == len(feeds) else 0
 
 
+# Changing extract_article_text(), _CHROME_TAGS or _CHROME_HINTS? Bump
+# EXTRACTOR_VERSION in the same commit, or the text store keeps serving text
+# extracted the old way.
+#
 # Page furniture that carries *other* stories' headlines: navigation, sidebars,
 # "related"/"trending"/"most read" blocks, newsletter promos, footers. Text from
 # these is not part of the article and must not be matched against keywords, or

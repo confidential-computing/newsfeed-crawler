@@ -138,6 +138,45 @@ class TestTextStore(unittest.TestCase):
         self.assertEqual(reloaded.get("https://a/new"), "y")
 
 
+    def write_old_record(self, url, text, tries=1, version=None):
+        """A record as saved by an older extractor (no "v" = before versions)."""
+        import base64
+        import json
+        import zlib
+        rec = {"url": url, "fetched": NOW.isoformat(), "tries": tries,
+               "z": base64.b64encode(zlib.compress(text.encode())).decode() if text else ""}
+        if version is not None:
+            rec["v"] = version
+        with open(os.path.join(self.dir, f"{NOW:%Y-%m-%d}.jsonl"), "a") as f:
+            f.write(json.dumps(rec) + "\n")
+
+    def test_text_from_an_older_extractor_counts_as_absent(self):
+        self.write_old_record("https://a/unversioned", "Next post: Claude office suite")
+        self.write_old_record("https://a/old", "old text", version=crawler.EXTRACTOR_VERSION - 1)
+        store = TextStore(self.dir).load()
+        self.assertIsNone(store.get("https://a/unversioned"))
+        self.assertTrue(store.needs_fetch("https://a/old"))
+        store.save({"https://a/old": "new text"}, NOW + timedelta(hours=1))
+        self.assertEqual(TextStore(self.dir).load().get("https://a/old"), "new text")
+
+    def test_failures_by_an_older_extractor_are_tried_again(self):
+        self.write_old_record("https://a/1", "", tries=TextStore.MAX_TRIES)
+        store = TextStore(self.dir).load()
+        self.assertTrue(store.needs_fetch("https://a/1"))
+        store.save({"https://a/1": ""}, NOW + timedelta(hours=1))
+        self.assertTrue(TextStore(self.dir).load().needs_fetch("https://a/1"))
+
+    def test_bumping_the_version_invalidates_saved_text(self):
+        TextStore(self.dir).save({"https://a/1": "text"}, NOW)
+        real = crawler.EXTRACTOR_VERSION
+        crawler.EXTRACTOR_VERSION = real + 1
+        try:
+            self.assertIsNone(TextStore(self.dir).load().get("https://a/1"))
+        finally:
+            crawler.EXTRACTOR_VERSION = real
+        self.assertEqual(TextStore(self.dir).load().get("https://a/1"), "text")
+
+
 class TestStoreArticleTexts(unittest.TestCase):
 
     def setUp(self):
@@ -185,6 +224,18 @@ class TestStoreArticleTexts(unittest.TestCase):
     def test_old_articles_in_a_new_feed_are_skipped(self):
         self.assertEqual(self.run_store([entry("https://a/old", NOW - timedelta(days=30)),
                                          entry("https://a/new", NOW - timedelta(days=1))]), (1, 0))
+
+    def test_text_from_an_older_extractor_is_fetched_again_within_the_cap(self):
+        self.run_store([entry(f"https://a/{i}") for i in range(3)])
+        self.fetched.clear()
+        real_version, real_cap = crawler.EXTRACTOR_VERSION, crawler.TEXT_FETCHES_PER_STORE_RUN
+        crawler.EXTRACTOR_VERSION, crawler.TEXT_FETCHES_PER_STORE_RUN = real_version + 1, 2
+        try:
+            self.assertEqual(self.run_store([], NOW + timedelta(hours=1)), (2, 1))
+            self.assertEqual(self.run_store([], NOW + timedelta(hours=2)), (1, 0))
+            self.assertEqual(self.run_store([], NOW + timedelta(hours=3)), (0, 0))
+        finally:
+            crawler.EXTRACTOR_VERSION, crawler.TEXT_FETCHES_PER_STORE_RUN = real_version, real_cap
 
     def test_backlog_is_capped_per_run(self):
         real_cap = crawler.TEXT_FETCHES_PER_STORE_RUN
