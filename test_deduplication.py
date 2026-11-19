@@ -10,7 +10,7 @@ import unittest
 # Add the current directory to Python path to import crawler
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from crawler import (normalize_url, compute_content_hash, deduplicate_articles, _title_tokens,
+from crawler import (normalize_url, deduplicate_articles, _title_tokens,
                      text_overlap)
 
 # Two texts long enough to judge (> DEDUP_MIN_SHINGLES phrases each).
@@ -56,22 +56,6 @@ class TestDeduplication(unittest.TestCase):
         complex_url = "https://news.site.com/story?utm_campaign=spring&fbclid=abc123&gclid=xyz789&title=real-param"
         normalized = normalize_url(complex_url)
         self.assertEqual(normalized, "https://news.site.com/story?title=real-param")
-    
-    def test_compute_content_hash(self):
-        """Test content hashing for duplicate detection"""
-        title1 = "Breaking: Major Security Flaw Found"
-        title2 = "BREAKING: Major Security Flaw Found!!!"
-        content = "This is the article content"
-        
-        hash1 = compute_content_hash(title1, content)
-        hash2 = compute_content_hash(title2, content)
-        
-        # Similar titles with same content should produce same hash
-        self.assertEqual(hash1, hash2)
-        
-        # Different content should produce different hash
-        hash3 = compute_content_hash(title1, "Different content")
-        self.assertNotEqual(hash1, hash3)
     
     def test_deduplicate_exact_url_matches(self):
         """Test deduplication of articles with identical URLs"""

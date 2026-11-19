@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Cleanup
+- The Google consent/login check in `fetch_article_text` stripped any
+  leading `w` and `.` characters (`lstrip("www.")`), not the `www.`
+  prefix, so a host such as `wwwgoogle.com` was taken for `google.com`
+  and its article dropped. It now removes only the prefix.
+- `urllib.parse` is imported explicitly instead of relying on
+  `urllib.request` loading it.
+- The hardcoded Arcium / Alpha Compute / L&T Vyoma cases in
+  `normalize_company_name` are now `SUBJECT_ALIASES`, extendable with a
+  top-level `subject_aliases:` list in feeds.yaml. Aliases now match whole
+  words only.
+- Removed `compute_content_hash`, unused since the dedup rewrite (5c8ace7).
+- The cc-news-crawler skill now runs this repo instead of its own stale copy.
+
 ## 2.12.0 — 2026-11-12
 
 ### Webfeed editions

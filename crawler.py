@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -8,6 +7,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -193,27 +193,6 @@ def normalize_url(url):
     except Exception:
         # If URL parsing fails, return original
         return url.lower()
-
-
-def compute_content_hash(title, content_text=""):
-    """
-    Compute a hash of the article's core content for duplicate detection.
-    Uses title and optional full text content.
-    """
-    # Normalize text: lowercase, collapse whitespace, remove punctuation
-    def normalize_text(text):
-        if not text:
-            return ""
-        # Keep only alphanumeric and spaces, collapse whitespace
-        normalized = re.sub(r'[^\w\s]', ' ', text.lower())
-        return ' '.join(normalized.split())
-    
-    normalized_title = normalize_text(title)
-    normalized_content = normalize_text(content_text)
-    
-    # Combine title and content for hashing
-    combined = f"{normalized_title}|||{normalized_content}"
-    return hashlib.md5(combined.encode('utf-8')).hexdigest()
 
 
 # Pairs of articles whose titles are at least this similar (Jaccard on title
@@ -1053,8 +1032,7 @@ def fetch_article_text(url):
         resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
         resp.raise_for_status()
         # Bail out if we ended up on a Google consent/login page rather than the article
-        from urllib.parse import urlparse
-        final_host = urlparse(resp.url).netloc.lstrip("www.")
+        final_host = (urllib.parse.urlparse(resp.url).hostname or "").removeprefix("www.")
         if any(final_host == d or final_host.endswith("." + d) for d in _REDIRECT_DOMAINS):
             return ""
         # Without a declared charset requests assumes ISO-8859-1, which garbles
@@ -1168,7 +1146,14 @@ def infer_subject(title):
     return result
 
 
-def normalize_company_name(name):
+# Subjects that title parsing mangles ("Beyond Privacy Coins Arcium's") are
+# folded to one name: any normalised subject containing the key as whole words
+# becomes the key. Extend without code changes via a top-level
+# `subject_aliases:` list in feeds.yaml.
+SUBJECT_ALIASES = ("arcium", "alpha compute", "l&t vyoma")
+
+
+def normalize_company_name(name, aliases=SUBJECT_ALIASES):
     """Normalize company name for intelligent duplicate detection."""
     if not name:
         return ""
@@ -1190,17 +1175,15 @@ def normalize_company_name(name):
     
     # Extract core company name from complex titles
     # Example: "Beyond Privacy Coins Arcium's" -> "arcium"
-    if 'arcium' in normalized:
-        normalized = 'arcium'
-    elif 'alpha compute' in normalized:
-        normalized = 'alpha compute'
-    elif 'l&t vyoma' in normalized:
-        normalized = 'l&t vyoma'
+    for alias in aliases:
+        alias = alias.lower().strip()
+        if alias and re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", normalized):
+            return alias
     
     return normalized
 
 
-def build_subject_index(dont_bucket, members):
+def build_subject_index(dont_bucket, members, aliases=SUBJECT_ALIASES):
     """Group 'Other' articles by inferred subject, with intelligent duplicate consolidation."""
     cleaned_members = [c for m in members for c in [clean_member_name(m)] if len(c) > 2]
     raw_index = {}
@@ -1220,7 +1203,7 @@ def build_subject_index(dont_bucket, members):
     normalized_to_articles = {}   # normalized name -> list of articles
     
     for subject, articles in raw_index.items():
-        normalized = normalize_company_name(subject)
+        normalized = normalize_company_name(subject, aliases)
         if not normalized:
             continue
             
@@ -2906,7 +2889,9 @@ def main():
 
     print(f"Writing report to {args.output}...", file=sys.stderr)
 
-    subject_index = build_subject_index(categorized["dont"], members)
+    subject_aliases = (*SUBJECT_ALIASES,
+                       *(str(a) for a in (feed_config.get("subject_aliases") or [])))
+    subject_index = build_subject_index(categorized["dont"], members, subject_aliases)
     sorted_subjects = sorted(subject_index.items(), key=lambda kv: (-len(kv[1]), kv[0].lower()))
 
     with open(args.output, "w") as f:
