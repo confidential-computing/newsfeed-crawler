@@ -17,7 +17,7 @@ import yaml
 from bs4 import BeautifulSoup
 
 
-__version__ = "2.12.0"
+__version__ = "2.12.1"
 
 DEFAULT_KEYWORDS ="confidential computing,confidential compute,confidential AI,trusted execution environment,enclave,TEE,SGX,TDX,SEV,SEV-SNP,Arm CCA,remote attestation,confidential VM,confidential container"
 CCC_PROJECT_UID = "54ec092e-cadd-49af-9edf-9a5c888cc283"
